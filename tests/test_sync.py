@@ -51,6 +51,24 @@ def test_sync_all_commits_codex_memories_and_extra_backup(tmp_path):
     assert manifest["extra_backup_repo"].endswith("extra-repo")
 
 
+def test_sync_all_second_run_is_noop_when_sources_unchanged(tmp_path):
+    config = make_config(tmp_path)
+    config.codex_memories.path.mkdir()
+    ensure_git_repo(config.codex_memories.path)
+    configure_identity(config.codex_memories.path)
+    (config.codex_memories.path / "MEMORY.md").write_text("codex memory\n", encoding="utf-8")
+    custom_skill = config.backup_sources.codex_custom_skills / "custom-skill"
+    custom_skill.mkdir(parents=True)
+    (custom_skill / "SKILL.md").write_text("custom skill\n", encoding="utf-8")
+
+    first = sync_all(config)
+    second = sync_all(config)
+
+    assert first.extra.committed is True
+    assert second.codex.committed is False
+    assert second.extra.committed is False
+
+
 def test_sync_all_fails_before_commit_when_secret_detected(tmp_path):
     config = make_config(tmp_path)
     config.codex_memories.path.mkdir()
@@ -62,4 +80,3 @@ def test_sync_all_fails_before_commit_when_secret_detected(tmp_path):
 
     assert not result.codex.scan.ok
     assert result.codex.committed is False
-

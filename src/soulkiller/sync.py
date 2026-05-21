@@ -150,7 +150,6 @@ def mirror_extra_sources(config: Config) -> dict[str, object]:
         skipped.append(str(claude_root))
 
     manifest = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
         "extra_backup_repo": str(repo),
         "sources": {
             "codex_custom_skills": str(skills_root),
@@ -207,4 +206,3 @@ def sync_extra_backup(config: Config) -> RepoSyncResult:
 
 def sync_all(config: Config) -> SyncResult:
     return SyncResult(codex=sync_codex_memories(config), extra=sync_extra_backup(config))
-
