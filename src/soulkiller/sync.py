@@ -188,15 +188,18 @@ def sync_codex_memories(config: Config) -> RepoSyncResult:
         run_git(backup_repo, "fetch", str(section.path), f"+{source_ref}:refs/heads/{section.source_branch}")
         source_branch_updated = previous_source_ref != source_ref
 
+    current_branch = run_git(backup_repo, "branch", "--show-current", check=False).stdout.strip()
+    use_current_snapshot_worktree = current_branch == section.snapshots_branch
     with tempfile.TemporaryDirectory(prefix="soulkiller-codex-snapshot-") as tmp:
-        snapshot_worktree = Path(tmp) / "snapshot"
+        snapshot_worktree = backup_repo if use_current_snapshot_worktree else Path(tmp) / "snapshot"
         try:
-            ensure_branch_worktree(backup_repo, section.snapshots_branch, snapshot_worktree)
+            if not use_current_snapshot_worktree:
+                ensure_branch_worktree(backup_repo, section.snapshots_branch, snapshot_worktree)
             _remove_non_git_contents(snapshot_worktree)
             _copy_tree(section.path, snapshot_worktree)
             commit = commit_all_if_changed(snapshot_worktree, f"snapshot: codex memories {_timestamp()}")
         finally:
-            if snapshot_worktree.exists():
+            if not use_current_snapshot_worktree and snapshot_worktree.exists():
                 remove_worktree(backup_repo, snapshot_worktree)
 
     push_results: list[PushResult] = []

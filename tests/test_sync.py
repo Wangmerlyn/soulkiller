@@ -216,19 +216,8 @@ def test_sync_codex_second_run_does_not_create_empty_snapshot(tmp_path):
     assert run_git(config.extra_backup.repo_path, "rev-parse", "codex/snapshots").stdout.strip() == snapshot_rev
 
 
-def test_sync_extra_backup_writes_main_branch_when_snapshot_branch_is_checked_out(tmp_path):
+def test_sync_all_reuses_checked_out_snapshot_branch_and_writes_extra_backup_to_main(tmp_path):
     config = make_config(tmp_path)
-    config = Config(
-        codex_memories=CodexMemoriesConfig(
-            enabled=True,
-            path=config.codex_memories.path,
-            auto_push=False,
-            source_branch=config.codex_memories.source_branch,
-            snapshots_branch="codex/test-snapshots",
-        ),
-        extra_backup=config.extra_backup,
-        backup_sources=config.backup_sources,
-    )
     config.codex_memories.path.mkdir()
     ensure_git_repo(config.codex_memories.path)
     configure_identity(config.codex_memories.path)
