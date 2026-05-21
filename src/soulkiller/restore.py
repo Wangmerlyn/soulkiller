@@ -21,6 +21,8 @@ def _copy_tree(source: Path, dest: Path) -> int:
         if path.is_dir():
             continue
         rel = path.relative_to(source)
+        if ".git" in rel.parts:
+            continue
         target = dest / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, target)
@@ -39,4 +41,3 @@ def restore_dry_run(config: Config) -> list[str]:
     if not repo.exists():
         return [f"extra backup repo does not exist: {repo}"]
     return [str(path.relative_to(repo)) for path in sorted(repo.rglob("*")) if path.is_file() and ".git" not in path.parts]
-

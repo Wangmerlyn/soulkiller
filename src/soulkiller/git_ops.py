@@ -63,12 +63,14 @@ def has_remote(repo: Path) -> bool:
 def current_branch(repo: Path) -> str:
     result = run_git(repo, "branch", "--show-current", check=False)
     branch = result.stdout.strip()
-    return branch or "main"
+    return branch
 
 
 def push_if_configured(repo: Path, auto_push: bool) -> PushResult:
     if not auto_push:
         return PushResult(pushed=False, message="auto_push disabled")
+    if not current_branch(repo):
+        return PushResult(pushed=False, message="detached HEAD; push skipped")
     if not has_remote(repo):
         return PushResult(pushed=False, message="no git remote configured; push skipped")
 
@@ -79,4 +81,3 @@ def push_if_configured(repo: Path, auto_push: bool) -> PushResult:
     else:
         run_git(repo, "push", "-u", "origin", branch)
     return PushResult(pushed=True, message="pushed")
-

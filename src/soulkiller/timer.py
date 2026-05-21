@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -32,12 +33,20 @@ def _soulkiller_command() -> str:
 
 def build_service_unit(config_path: Path) -> str:
     command = _soulkiller_command()
+    exec_start = " ".join(
+        [
+            shlex.quote(command),
+            "sync",
+            "--config",
+            shlex.quote(str(config_path)),
+        ]
+    )
     return f"""[Unit]
 Description=Soulkiller long-term memory backup
 
 [Service]
 Type=oneshot
-ExecStart={command} sync --config {config_path}
+ExecStart={exec_start}
 """
 
 

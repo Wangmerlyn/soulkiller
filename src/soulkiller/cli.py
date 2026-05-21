@@ -12,8 +12,8 @@ from .timer import install_timer
 
 
 def _config_path(args: argparse.Namespace) -> Path:
-    value = getattr(args, "config", None)
-    return Path(value).expanduser() if value else default_config_path()
+    value = getattr(args, "command_config", None) or getattr(args, "config", None)
+    return Path(value).expanduser().resolve() if value else default_config_path().resolve()
 
 
 def command_init_config(args: argparse.Namespace) -> int:
@@ -62,7 +62,7 @@ def command_sync(args: argparse.Namespace) -> int:
 
 def command_install_timer(args: argparse.Namespace) -> int:
     path = _config_path(args)
-    result = install_timer(path, unit_dir=Path(args.unit_dir).expanduser() if args.unit_dir else None, enable=args.enable)
+    result = install_timer(path, unit_dir=Path(args.unit_dir).expanduser().resolve() if args.unit_dir else None, enable=args.enable)
     print(f"service: {result.service_path}")
     print(f"timer: {result.timer_path}")
     print(f"enabled: {result.enabled}")
@@ -103,35 +103,35 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     init_parser = subparsers.add_parser("init-config")
-    init_parser.add_argument("--config", help="Path to config.toml")
+    init_parser.add_argument("--config", dest="command_config", help="Path to config.toml")
     init_parser.add_argument("--force", action="store_true")
     init_parser.set_defaults(func=command_init_config)
 
     status_parser = subparsers.add_parser("status")
-    status_parser.add_argument("--config", help="Path to config.toml")
+    status_parser.add_argument("--config", dest="command_config", help="Path to config.toml")
     status_parser.set_defaults(func=command_status)
 
     sync_parser = subparsers.add_parser("sync")
-    sync_parser.add_argument("--config", help="Path to config.toml")
+    sync_parser.add_argument("--config", dest="command_config", help="Path to config.toml")
     sync_parser.set_defaults(func=command_sync)
 
     timer_parser = subparsers.add_parser("install-timer")
-    timer_parser.add_argument("--config", help="Path to config.toml")
+    timer_parser.add_argument("--config", dest="command_config", help="Path to config.toml")
     timer_parser.add_argument("--unit-dir", help="Override systemd user unit directory")
     timer_parser.add_argument("--enable", action="store_true")
     timer_parser.set_defaults(func=command_install_timer)
 
     cron_parser = subparsers.add_parser("install-cron")
-    cron_parser.add_argument("--config", help="Path to config.toml")
+    cron_parser.add_argument("--config", dest="command_config", help="Path to config.toml")
     cron_parser.set_defaults(func=command_install_cron)
 
     tmux_parser = subparsers.add_parser("install-tmux-loop")
-    tmux_parser.add_argument("--config", help="Path to config.toml")
+    tmux_parser.add_argument("--config", dest="command_config", help="Path to config.toml")
     tmux_parser.add_argument("--session-name", default="soulkiller-backup")
     tmux_parser.set_defaults(func=command_install_tmux_loop)
 
     restore_parser = subparsers.add_parser("restore")
-    restore_parser.add_argument("--config", help="Path to config.toml")
+    restore_parser.add_argument("--config", dest="command_config", help="Path to config.toml")
     restore_parser.add_argument("--dry-run", action="store_true")
     restore_parser.add_argument("--staging-dir")
     restore_parser.set_defaults(func=command_restore)

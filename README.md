@@ -112,12 +112,37 @@ The primary supported scheduler is a systemd user timer:
 systemctl --user list-timers soulkiller*
 ```
 
-If systemd user services are unavailable, use cron as a fallback and run the
-same sync command on your preferred schedule:
+On machines where the systemd user manager is not persistent after logout, also
+enable user lingering from an admin shell if you need the timer to survive
+reboots before login:
+
+```sh
+loginctl enable-linger "$USER"
+```
+
+If systemd user services are unavailable, use cron as the preferred fallback:
 
 ```cron
 0 */6 * * * /path/to/soulkiller/bin/soulkiller sync
 ```
+
+Soulkiller can install or replace its managed cron block when `crontab` is
+available:
+
+```sh
+./bin/soulkiller install-cron
+```
+
+If neither systemd nor cron is available, use the tmux fallback:
+
+```sh
+./bin/soulkiller install-tmux-loop
+tmux attach -t soulkiller-backup
+```
+
+If a `soulkiller-backup` tmux session already exists, Soulkiller refuses to
+overwrite it. Inspect it or stop it first with `tmux kill-session -t
+soulkiller-backup`.
 
 ## Safety Scan
 

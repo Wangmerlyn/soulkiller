@@ -31,6 +31,16 @@ def test_build_systemd_units_include_sync_command(tmp_path):
     assert "Persistent=true" in timer
 
 
+def test_build_service_unit_quotes_paths_with_spaces(tmp_path, monkeypatch):
+    config_path = tmp_path / "config dir" / "config.toml"
+    command = tmp_path / "bin dir" / "soulkiller"
+    monkeypatch.setenv("SOULKILLER_COMMAND", str(command))
+
+    service = build_service_unit(config_path)
+
+    assert f"ExecStart='{command}' sync --config '{config_path}'" in service
+
+
 def test_build_service_unit_prefers_running_soulkiller_script(tmp_path, monkeypatch):
     config_path = tmp_path / "config.toml"
     fake_script = tmp_path / ".venv" / "bin" / "soulkiller"
@@ -69,9 +79,13 @@ def test_restore_to_staging_copies_extra_backup(tmp_path):
     source = config.extra_backup.repo_path / "claude" / "project-memories" / "project" / "memory"
     source.mkdir(parents=True)
     (source / "notes.md").write_text("memory\n", encoding="utf-8")
+    git_dir = config.extra_backup.repo_path / ".git"
+    git_dir.mkdir(parents=True)
+    (git_dir / "config").write_text("private git metadata\n", encoding="utf-8")
     staging = tmp_path / "staging"
 
     result = restore_to_staging(config, staging)
 
     assert result.copied_files == 1
     assert (staging / "claude" / "project-memories" / "project" / "memory" / "notes.md").exists()
+    assert not (staging / ".git" / "config").exists()

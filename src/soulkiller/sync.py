@@ -3,8 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from contextlib import contextmanager
+import fcntl
 import json
 import shutil
+import tempfile
 
 from .config import Config
 from .git_ops import CommitResult, PushResult, commit_all_if_changed, ensure_git_repo, is_git_repo, push_if_configured
@@ -35,6 +38,23 @@ def _timestamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
+def default_lock_path() -> Path:
+    return Path("~/.local/state/soulkiller/sync.lock").expanduser()
+
+
+@contextmanager
+def _sync_lock(lock_path: Path):
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("w", encoding="utf-8") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        yield True
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
 def _disabled_result(name: str, path: Path) -> RepoSyncResult:
     return RepoSyncResult(
         name=name,
@@ -60,6 +80,20 @@ def _failed_scan_result(name: str, path: Path, scan: ScanResult) -> RepoSyncResu
         pushed=False,
         push_message="not pushed",
         error="safety scan failed",
+    )
+
+
+def _busy_result(name: str, path: Path) -> RepoSyncResult:
+    return RepoSyncResult(
+        name=name,
+        path=path,
+        scan=ScanResult(root=path, issues=[]),
+        committed=False,
+        commit_hash=None,
+        commit_message="sync lock busy",
+        pushed=False,
+        push_message="not pushed",
+        error="another sync is already running",
     )
 
 
@@ -115,8 +149,8 @@ def _copy_tree(source: Path, dest: Path) -> int:
     return copied
 
 
-def mirror_extra_sources(config: Config) -> dict[str, object]:
-    repo = config.extra_backup.repo_path
+def mirror_extra_sources(config: Config, target_root: Path | None = None) -> dict[str, object]:
+    repo = target_root or config.extra_backup.repo_path
     copied_skills = 0
     copied_claude = 0
     skipped: list[str] = []
@@ -150,7 +184,7 @@ def mirror_extra_sources(config: Config) -> dict[str, object]:
         skipped.append(str(claude_root))
 
     manifest = {
-        "extra_backup_repo": str(repo),
+        "extra_backup_repo": str(config.extra_backup.repo_path),
         "sources": {
             "codex_custom_skills": str(skills_root),
             "claude_projects": str(claude_root),
@@ -185,10 +219,22 @@ def sync_extra_backup(config: Config) -> RepoSyncResult:
         )
 
     ensure_git_repo(section.repo_path)
-    mirror_extra_sources(config)
-    scan = scan_tree(section.repo_path)
-    if not scan.ok:
-        return _failed_scan_result("extra backup", section.repo_path, scan)
+    with tempfile.TemporaryDirectory(prefix="soulkiller-extra-") as tmp:
+        staged_root = Path(tmp)
+        mirror_extra_sources(config, staged_root)
+        scan = scan_tree(staged_root)
+        if not scan.ok:
+            return _failed_scan_result("extra backup", section.repo_path, scan)
+
+        for name in ("codex", "claude", "manifests"):
+            destination = section.repo_path / name
+            shutil.rmtree(destination, ignore_errors=True)
+            source = staged_root / name
+            if source.exists():
+                shutil.copytree(source, destination)
+        repo_scan = scan_tree(section.repo_path)
+        if not repo_scan.ok:
+            return _failed_scan_result("extra backup", section.repo_path, repo_scan)
 
     commit = commit_all_if_changed(section.repo_path, f"backup: extra memory {_timestamp()}")
     push = push_if_configured(section.repo_path, section.auto_push) if commit.committed else PushResult(False, "no changes")
@@ -204,5 +250,11 @@ def sync_extra_backup(config: Config) -> RepoSyncResult:
     )
 
 
-def sync_all(config: Config) -> SyncResult:
-    return SyncResult(codex=sync_codex_memories(config), extra=sync_extra_backup(config))
+def sync_all(config: Config, lock_path: Path | None = None) -> SyncResult:
+    with _sync_lock(lock_path or default_lock_path()) as acquired:
+        if not acquired:
+            return SyncResult(
+                codex=_busy_result("codex memories", config.codex_memories.path),
+                extra=_busy_result("extra backup", config.extra_backup.repo_path),
+            )
+        return SyncResult(codex=sync_codex_memories(config), extra=sync_extra_backup(config))

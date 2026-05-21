@@ -1,9 +1,8 @@
 import subprocess
-import sys
 
 
 def run_cli(*args, env=None):
-    command = [sys.executable, "-m", "soulkiller", *args]
+    command = ["bin/soulkiller", *args]
     return subprocess.run(command, text=True, capture_output=True, env=env)
 
 
@@ -28,3 +27,14 @@ def test_cli_status_reports_paths(tmp_path, monkeypatch):
     assert "Codex memories" in status.stdout
     assert "Extra backup" in status.stdout
 
+
+def test_cli_accepts_config_before_subcommand(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config_path = tmp_path / "custom.toml"
+    init = run_cli("--config", str(config_path), "init-config")
+    assert init.returncode == 0
+
+    status = run_cli("--config", str(config_path), "status")
+
+    assert status.returncode == 0
+    assert str(tmp_path / ".codex" / "memories") in status.stdout
