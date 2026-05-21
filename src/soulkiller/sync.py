@@ -232,6 +232,9 @@ def sync_extra_backup(config: Config) -> RepoSyncResult:
             source = staged_root / name
             if source.exists():
                 shutil.copytree(source, destination)
+        repo_scan = scan_tree(section.repo_path)
+        if not repo_scan.ok:
+            return _failed_scan_result("extra backup", section.repo_path, repo_scan)
 
     commit = commit_all_if_changed(section.repo_path, f"backup: extra memory {_timestamp()}")
     push = push_if_configured(section.repo_path, section.auto_push) if commit.committed else PushResult(False, "no changes")

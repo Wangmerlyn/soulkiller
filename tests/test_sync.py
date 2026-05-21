@@ -99,6 +99,23 @@ def test_sync_all_does_not_leave_blocked_extra_source_in_repo(tmp_path):
     assert not (config.extra_backup.repo_path / "codex" / "skills" / "unsafe" / "auth.json").exists()
 
 
+def test_sync_all_rejects_existing_unsafe_extra_repo_file(tmp_path):
+    config = make_config(tmp_path)
+    config.codex_memories.path.mkdir()
+    ensure_git_repo(config.codex_memories.path)
+    configure_identity(config.codex_memories.path)
+    config.extra_backup.repo_path.mkdir()
+    ensure_git_repo(config.extra_backup.repo_path)
+    configure_identity(config.extra_backup.repo_path)
+    (config.extra_backup.repo_path / ".env.local").write_text("OPENAI_API_KEY=sk-abc123456789\n", encoding="utf-8")
+
+    result = sync_all(config)
+
+    assert not result.extra.scan.ok
+    assert result.extra.committed is False
+    assert any(".env.local" in issue.path for issue in result.extra.scan.issues)
+
+
 def test_sync_all_reports_busy_when_lock_is_held(tmp_path):
     config = make_config(tmp_path)
     lock_path = tmp_path / "sync.lock"
