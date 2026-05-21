@@ -110,6 +110,21 @@ def _busy_result(name: str, path: Path) -> RepoSyncResult:
     )
 
 
+def _missing_backup_repo_result(name: str, path: Path, repo: Path) -> RepoSyncResult:
+    return RepoSyncResult(
+        name=name,
+        path=path,
+        scan=ScanResult(root=path, issues=[]),
+        committed=False,
+        commit_hash=None,
+        commit_message="repo missing",
+        pushed=False,
+        push_message="not pushed",
+        scan_skipped=True,
+        error=f"repo missing: {repo}",
+    )
+
+
 def _ensure_repo_head(repo: Path) -> None:
     ensure_git_repo(repo)
     head = run_git(repo, "rev-parse", "--verify", "HEAD", check=False)
@@ -159,6 +174,9 @@ def sync_codex_memories(config: Config) -> RepoSyncResult:
         )
 
     backup_repo = config.extra_backup.repo_path
+    if not backup_repo.exists() and not config.extra_backup.init_if_missing:
+        return _missing_backup_repo_result("codex memories", section.path, backup_repo)
+
     _ensure_repo_head(backup_repo)
 
     source_branch_updated = False

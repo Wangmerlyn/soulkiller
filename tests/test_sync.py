@@ -127,6 +127,34 @@ def test_sync_all_rejects_existing_unsafe_extra_repo_file(tmp_path):
     assert any(".env.local" in issue.path for issue in result.extra.scan.issues)
 
 
+def test_sync_codex_reports_missing_extra_repo_without_creating_it(tmp_path, monkeypatch):
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "test@example.com")
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "Test User")
+    monkeypatch.setenv("GIT_COMMITTER_EMAIL", "test@example.com")
+    monkeypatch.setenv("GIT_COMMITTER_NAME", "Test User")
+    config = make_config(tmp_path)
+    config = Config(
+        codex_memories=config.codex_memories,
+        extra_backup=ExtraBackupConfig(
+            enabled=True,
+            repo_path=config.extra_backup.repo_path,
+            auto_push=False,
+            init_if_missing=False,
+        ),
+        backup_sources=config.backup_sources,
+    )
+    config.codex_memories.path.mkdir()
+    ensure_git_repo(config.codex_memories.path)
+    configure_identity(config.codex_memories.path)
+    (config.codex_memories.path / "MEMORY.md").write_text("codex memory\n", encoding="utf-8")
+
+    result = sync_all(config)
+
+    assert result.codex.error is not None
+    assert "repo missing" in result.codex.error or "missing repo" in result.codex.error
+    assert not config.extra_backup.repo_path.exists()
+
+
 def test_sync_codex_snapshots_do_not_commit_source_repo(tmp_path):
     config = make_config(tmp_path)
     config.codex_memories.path.mkdir()

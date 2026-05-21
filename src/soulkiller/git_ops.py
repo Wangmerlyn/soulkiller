@@ -73,6 +73,11 @@ def branch_exists(repo: Path, branch: str) -> bool:
     return result.returncode == 0
 
 
+def ref_exists(repo: Path, ref: str) -> bool:
+    result = run_git(repo, "show-ref", "--verify", "--quiet", ref, check=False)
+    return result.returncode == 0
+
+
 def update_branch_to_ref(repo: Path, branch: str, ref: str) -> None:
     run_git(repo, "branch", "-f", branch, ref)
 
@@ -102,6 +107,16 @@ def ensure_branch_worktree(repo: Path, branch: str, worktree_path: Path) -> None
 
     if branch_exists(repo, branch):
         run_git(repo, "worktree", "add", str(worktree_path), branch)
+    elif ref_exists(repo, f"refs/remotes/origin/{branch}"):
+        run_git(
+            repo,
+            "worktree",
+            "add",
+            "-b",
+            branch,
+            str(worktree_path),
+            f"refs/remotes/origin/{branch}",
+        )
     else:
         run_git(repo, "worktree", "add", "-b", branch, str(worktree_path))
 

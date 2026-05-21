@@ -82,6 +82,44 @@ def test_ensure_branch_worktree_creates_or_reuses_branch(tmp_path):
     assert (worktree_path / "snapshot.txt").read_text(encoding="utf-8") == "snapshot\n"
 
 
+def test_ensure_branch_worktree_creates_missing_branch_from_origin_branch(tmp_path):
+    remote = tmp_path / "remote.git"
+    seed = tmp_path / "seed"
+    fresh = tmp_path / "fresh"
+    worktree_path = tmp_path / "fresh-snapshots"
+    subprocess.run(
+        ["git", "init", "--bare", "-b", "main", str(remote)],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    ensure_git_repo(seed)
+    configure_identity(seed)
+    (seed / "README.md").write_text("main\n", encoding="utf-8")
+    commit_all_if_changed(seed, "init: main")
+    run_git(seed, "remote", "add", "origin", str(remote))
+    run_git(seed, "push", "-u", "origin", "main")
+    run_git(seed, "checkout", "-b", "codex/snapshots")
+    (seed / "snapshot.txt").write_text("remote snapshot\n", encoding="utf-8")
+    commit_all_if_changed(seed, "snapshot: remote")
+    run_git(seed, "push", "-u", "origin", "codex/snapshots")
+    subprocess.run(
+        ["git", "clone", str(remote), str(fresh)],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    configure_identity(fresh)
+
+    assert branch_exists(fresh, "codex/snapshots") is False
+
+    ensure_branch_worktree(fresh, "codex/snapshots", worktree_path)
+    (worktree_path / "next.txt").write_text("next snapshot\n", encoding="utf-8")
+    commit_all_if_changed(worktree_path, "snapshot: next")
+
+    run_git(fresh, "merge-base", "--is-ancestor", "origin/codex/snapshots", "codex/snapshots")
+
+
 def test_ensure_branch_worktree_replaces_plain_directory(tmp_path):
     repo = tmp_path / "repo"
     worktree_path = tmp_path / "snapshots"
