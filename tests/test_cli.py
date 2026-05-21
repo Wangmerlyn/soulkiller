@@ -1,6 +1,6 @@
 import subprocess
 
-from soulkiller.cli import _print_repo_result
+from soulkiller.cli import _print_repo_result, build_parser
 from soulkiller.scanner import ScanResult
 from soulkiller.sync import RepoSyncResult
 
@@ -55,6 +55,16 @@ def test_cli_accepts_config_before_subcommand(tmp_path, monkeypatch):
 
     assert status.returncode == 0
     assert str(tmp_path / ".codex" / "memories") in status.stdout
+
+
+def test_restore_parser_accepts_codex_snapshot_source():
+    args = build_parser().parse_args(
+        ["restore", "--source", "codex", "--snapshot", "latest", "--staging-dir", "/tmp/stage"]
+    )
+
+    assert args.source == "codex"
+    assert args.snapshot == "latest"
+    assert args.staging_dir == "/tmp/stage"
 
 
 def test_print_repo_result_reports_skipped_scan(tmp_path, capsys):

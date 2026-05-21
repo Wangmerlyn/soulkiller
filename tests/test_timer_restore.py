@@ -1,5 +1,8 @@
+import subprocess
+
 from soulkiller.config import BackupSourcesConfig, CodexMemoriesConfig, Config, ExtraBackupConfig
-from soulkiller.restore import restore_to_staging
+from soulkiller.git_ops import commit_all_if_changed, ensure_git_repo, update_branch_to_ref
+from soulkiller.restore import list_codex_snapshots, restore_codex_snapshot_to_staging, restore_to_staging
 from soulkiller.timer import build_service_unit, build_timer_unit, install_timer
 
 
@@ -17,6 +20,11 @@ def make_config(tmp_path):
             claude_projects=tmp_path / "claude-projects",
         ),
     )
+
+
+def configure_identity(path):
+    subprocess.run(["git", "-C", str(path), "config", "user.email", "test@example.com"], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.name", "Test User"], check=True)
 
 
 def test_build_systemd_units_include_sync_command(tmp_path):
@@ -89,3 +97,38 @@ def test_restore_to_staging_copies_extra_backup(tmp_path):
     assert result.copied_files == 1
     assert (staging / "claude" / "project-memories" / "project" / "memory" / "notes.md").exists()
     assert not (staging / ".git" / "config").exists()
+
+
+def test_list_codex_snapshots_returns_snapshot_commits(tmp_path):
+    config = make_config(tmp_path)
+    repo = config.extra_backup.repo_path
+    ensure_git_repo(repo)
+    configure_identity(repo)
+    (repo / "MEMORY.md").write_text("codex memory\n", encoding="utf-8")
+    commit = commit_all_if_changed(repo, "snapshot: codex memories")
+    assert commit.commit_hash is not None
+    update_branch_to_ref(repo, "codex/snapshots", commit.commit_hash)
+
+    snapshots = list_codex_snapshots(config)
+
+    assert snapshots == [commit.commit_hash]
+
+
+def test_restore_codex_snapshot_to_staging_copies_selected_ref(tmp_path):
+    config = make_config(tmp_path)
+    repo = config.extra_backup.repo_path
+    ensure_git_repo(repo)
+    configure_identity(repo)
+    (repo / "MEMORY.md").write_text("codex memory\n", encoding="utf-8")
+    commit = commit_all_if_changed(repo, "snapshot: codex memories")
+    assert commit.commit_hash is not None
+    update_branch_to_ref(repo, "codex/snapshots", commit.commit_hash)
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "stale.txt").write_text("old staging content\n", encoding="utf-8")
+
+    result = restore_codex_snapshot_to_staging(config, "latest", staging)
+
+    assert result.copied_files == 1
+    assert (staging / "MEMORY.md").read_text(encoding="utf-8") == "codex memory\n"
+    assert not (staging / "stale.txt").exists()
