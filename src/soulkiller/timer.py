@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import sys
@@ -20,6 +21,9 @@ def default_unit_dir() -> Path:
 
 
 def _soulkiller_command() -> str:
+    env_command = os.environ.get("SOULKILLER_COMMAND")
+    if env_command:
+        return env_command
     argv0 = Path(sys.argv[0]).expanduser()
     if argv0.name == "soulkiller" and argv0.exists():
         return str(argv0.resolve())

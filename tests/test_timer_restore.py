@@ -43,6 +43,16 @@ def test_build_service_unit_prefers_running_soulkiller_script(tmp_path, monkeypa
     assert f"ExecStart={fake_script} sync --config {config_path}" in service
 
 
+def test_build_service_unit_prefers_soulkiller_command_env(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.toml"
+    command = tmp_path / "bin" / "soulkiller"
+    monkeypatch.setenv("SOULKILLER_COMMAND", str(command))
+
+    service = build_service_unit(config_path)
+
+    assert f"ExecStart={command} sync --config {config_path}" in service
+
+
 def test_install_timer_writes_units_without_enabling(tmp_path):
     config_path = tmp_path / "config.toml"
     unit_dir = tmp_path / "systemd"
