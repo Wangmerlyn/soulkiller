@@ -10,7 +10,18 @@ import shutil
 import tempfile
 
 from .config import Config
-from .git_ops import CommitResult, PushResult, commit_all_if_changed, ensure_git_repo, is_git_repo, push_if_configured
+from .git_ops import (
+    PushResult,
+    branch_exists,
+    commit_all_if_changed,
+    ensure_branch_worktree,
+    ensure_git_repo,
+    is_git_repo,
+    push_branch_if_configured,
+    push_if_configured,
+    remove_worktree,
+    run_git,
+)
 from .scanner import ScanResult, scan_tree
 
 
@@ -99,6 +110,37 @@ def _busy_result(name: str, path: Path) -> RepoSyncResult:
     )
 
 
+def _ensure_repo_head(repo: Path) -> None:
+    ensure_git_repo(repo)
+    head = run_git(repo, "rev-parse", "--verify", "HEAD", check=False)
+    if head.returncode != 0:
+        run_git(repo, "commit", "--allow-empty", "-m", "init: soulkiller backup repo")
+
+
+def _remove_non_git_contents(path: Path) -> None:
+    for child in path.iterdir():
+        if child.name == ".git":
+            continue
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
+def _combine_push_results(results: list[PushResult]) -> PushResult:
+    if not results:
+        return PushResult(False, "no changes")
+    return PushResult(
+        pushed=any(result.pushed for result in results),
+        message="; ".join(result.message for result in results),
+    )
+
+
+def _push_branch_if_configured(repo: Path, branch: str, auto_push: bool, force_with_lease: bool) -> PushResult:
+    result = push_branch_if_configured(repo, branch, auto_push, force_with_lease=force_with_lease)
+    return PushResult(result.pushed, f"{branch}: {result.message}")
+
+
 def sync_codex_memories(config: Config) -> RepoSyncResult:
     section = config.codex_memories
     if not section.enabled:
@@ -116,8 +158,50 @@ def sync_codex_memories(config: Config) -> RepoSyncResult:
             error=f"not a git repository: {section.path}",
         )
 
-    commit = commit_all_if_changed(section.path, f"backup: codex memories {_timestamp()}")
-    push = push_if_configured(section.path, section.auto_push) if commit.committed else PushResult(False, "no changes")
+    backup_repo = config.extra_backup.repo_path
+    _ensure_repo_head(backup_repo)
+
+    source_branch_updated = False
+    source_head = run_git(section.path, "rev-parse", "--verify", "HEAD", check=False)
+    if source_head.returncode == 0:
+        source_ref = source_head.stdout.strip()
+        previous_source_ref = None
+        if branch_exists(backup_repo, section.source_branch):
+            previous_source_ref = run_git(backup_repo, "rev-parse", section.source_branch).stdout.strip()
+        run_git(backup_repo, "fetch", str(section.path), f"+{source_ref}:refs/heads/{section.source_branch}")
+        source_branch_updated = previous_source_ref != source_ref
+
+    with tempfile.TemporaryDirectory(prefix="soulkiller-codex-snapshot-") as tmp:
+        snapshot_worktree = Path(tmp) / "snapshot"
+        try:
+            ensure_branch_worktree(backup_repo, section.snapshots_branch, snapshot_worktree)
+            _remove_non_git_contents(snapshot_worktree)
+            _copy_tree(section.path, snapshot_worktree)
+            commit = commit_all_if_changed(snapshot_worktree, f"snapshot: codex memories {_timestamp()}")
+        finally:
+            if snapshot_worktree.exists():
+                remove_worktree(backup_repo, snapshot_worktree)
+
+    push_results: list[PushResult] = []
+    if source_branch_updated:
+        push_results.append(
+            _push_branch_if_configured(
+                backup_repo,
+                section.source_branch,
+                section.auto_push,
+                force_with_lease=True,
+            )
+        )
+    if commit.committed:
+        push_results.append(
+            _push_branch_if_configured(
+                backup_repo,
+                section.snapshots_branch,
+                section.auto_push,
+                force_with_lease=False,
+            )
+        )
+    push = _combine_push_results(push_results)
     return RepoSyncResult(
         name="codex memories",
         path=section.path,
