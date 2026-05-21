@@ -123,7 +123,7 @@ def install_tmux_loop(
     state.mkdir(parents=True, exist_ok=True)
     has_session = runner(["tmux", "has-session", "-t", session_name], text=True, capture_output=True)
     if has_session.returncode == 0:
-        return TmuxInstallResult(True, session_name, "tmux session already running")
+        return TmuxInstallResult(False, session_name, "tmux session already exists; inspect or kill it before installing")
 
     loop_command = build_tmux_command(config_path=config_path, soulkiller_command=command, state_dir=state)
     started = runner(["tmux", "new-session", "-d", "-s", session_name, loop_command], text=True, capture_output=True)

@@ -1,6 +1,6 @@
 import subprocess
 
-from soulkiller.scheduler import build_cron_block, build_tmux_command, install_cron
+from soulkiller.scheduler import build_cron_block, build_tmux_command, install_cron, install_tmux_loop
 
 
 def test_build_cron_block_uses_six_hour_schedule(tmp_path):
@@ -46,3 +46,15 @@ def test_build_tmux_command_runs_loop_script(tmp_path):
     assert "while :" in command
     assert "/bin/soulkiller sync --config" in command
     assert "sleep 21600" in command
+
+
+def test_install_tmux_loop_rejects_existing_session(tmp_path):
+    def fake_run(args, **kwargs):
+        if args[:3] == ["tmux", "has-session", "-t"]:
+            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+        raise AssertionError(args)
+
+    result = install_tmux_loop(config_path=tmp_path / "config.toml", runner=fake_run)
+
+    assert result.started is False
+    assert "already exists" in result.message
