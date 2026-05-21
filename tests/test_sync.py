@@ -70,17 +70,19 @@ def test_sync_all_second_run_is_noop_when_sources_unchanged(tmp_path):
     assert second.extra.committed is False
 
 
-def test_sync_all_fails_before_commit_when_secret_detected(tmp_path):
+def test_sync_all_does_not_scan_codex_memories_repo(tmp_path):
     config = make_config(tmp_path)
     config.codex_memories.path.mkdir()
     ensure_git_repo(config.codex_memories.path)
     configure_identity(config.codex_memories.path)
     (config.codex_memories.path / "auth.json").write_text("{}", encoding="utf-8")
+    (config.codex_memories.path / "note.md").write_text("OPENAI_API_KEY=sk-abc123456789\n", encoding="utf-8")
 
     result = sync_all(config)
 
-    assert not result.codex.scan.ok
-    assert result.codex.committed is False
+    assert result.codex.scan.ok
+    assert result.codex.scan_skipped is True
+    assert result.codex.committed is True
 
 
 def test_sync_all_does_not_leave_blocked_extra_source_in_repo(tmp_path):

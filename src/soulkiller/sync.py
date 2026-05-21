@@ -24,6 +24,7 @@ class RepoSyncResult:
     commit_message: str
     pushed: bool
     push_message: str
+    scan_skipped: bool = False
     skipped: bool = False
     error: str | None = None
 
@@ -65,6 +66,7 @@ def _disabled_result(name: str, path: Path) -> RepoSyncResult:
         commit_message="disabled",
         pushed=False,
         push_message="disabled",
+        scan_skipped=True,
         skipped=True,
     )
 
@@ -114,21 +116,18 @@ def sync_codex_memories(config: Config) -> RepoSyncResult:
             error=f"not a git repository: {section.path}",
         )
 
-    scan = scan_tree(section.path)
-    if not scan.ok:
-        return _failed_scan_result("codex memories", section.path, scan)
-
     commit = commit_all_if_changed(section.path, f"backup: codex memories {_timestamp()}")
     push = push_if_configured(section.path, section.auto_push) if commit.committed else PushResult(False, "no changes")
     return RepoSyncResult(
         name="codex memories",
         path=section.path,
-        scan=scan,
+        scan=ScanResult(root=section.path, issues=[]),
         committed=commit.committed,
         commit_hash=commit.commit_hash,
         commit_message=commit.message,
         pushed=push.pushed,
         push_message=push.message,
+        scan_skipped=True,
     )
 
 

@@ -146,9 +146,13 @@ soulkiller-backup`.
 
 ## Safety Scan
 
-Soulkiller blocks files and paths that look unsafe to back up. The scanner is
+Soulkiller does not scan the Codex memories repository before syncing it. That
+repository is treated as Codex-owned state and is backed up with normal git
+commit/push behavior.
+
+Soulkiller does scan the generated extra backup repository. That scanner is
 designed to stop common private or noisy data from entering the private backup
-repository.
+repository that Soulkiller assembles from configured sources.
 
 Blocked patterns include:
 

@@ -61,6 +61,158 @@ def test_scan_tree_allows_environment_token_lookup_code(tmp_path):
     assert result.ok
 
 
+def test_scan_tree_allows_environment_variable_name_constant(tmp_path):
+    file_path = tmp_path / "client.py"
+    file_path.write_text(
+        'ENV_ACCESS_TOKEN = "YUNXIAO_ACCESS_TOKEN"\n'
+        "token = os.environ.get(ENV_ACCESS_TOKEN)\n",
+        encoding="utf-8",
+    )
+
+    result = scan_tree(tmp_path)
+
+    assert result.ok
+
+
+def test_scan_tree_rejects_unused_environment_variable_name_constant(tmp_path):
+    file_path = tmp_path / "client.py"
+    file_path.write_text('ENV_ACCESS_TOKEN = "YUNXIAO_ACCESS_TOKEN"\n', encoding="utf-8")
+
+    result = scan_tree(tmp_path)
+
+    assert not result.ok
+    assert any("ENV_ACCESS_TOKEN" in issue.message for issue in result.issues)
+
+
+def test_scan_tree_rejects_lowercase_environment_variable_name_constant(tmp_path):
+    file_path = tmp_path / "client.py"
+    file_path.write_text('env_access_token = "YUNXIAO_ACCESS_TOKEN"\n', encoding="utf-8")
+
+    result = scan_tree(tmp_path)
+
+    assert not result.ok
+    assert any("env_access_token" in issue.message for issue in result.issues)
+
+
+def test_scan_tree_allows_documented_placeholder_secret_value(tmp_path):
+    file_path = tmp_path / "SKILL.md"
+    file_path.write_text('export YUNXIAO_ACCESS_TOKEN="你的个人访问令牌"\n', encoding="utf-8")
+
+    result = scan_tree(tmp_path)
+
+    assert result.ok
+
+
+def test_scan_tree_rejects_non_ascii_password_value(tmp_path):
+    file_path = tmp_path / "note.md"
+    file_path.write_text('PASSWORD="pässwörd"\n', encoding="utf-8")
+
+    result = scan_tree(tmp_path)
+
+    assert not result.ok
+    assert any("PASSWORD" in issue.message for issue in result.issues)
+
+
+def test_scan_tree_rejects_non_ascii_secret_value(tmp_path):
+    file_path = tmp_path / "note.md"
+    file_path.write_text('MY_SECRET="真实密钥"\n', encoding="utf-8")
+
+    result = scan_tree(tmp_path)
+
+    assert not result.ok
+    assert any("MY_SECRET" in issue.message for issue in result.issues)
+
+
+def test_scan_tree_rejects_uppercase_secret_value(tmp_path):
+    file_path = tmp_path / "note.md"
+    file_path.write_text('MY_SECRET="PRODSECRET123"\n', encoding="utf-8")
+
+    result = scan_tree(tmp_path)
+
+    assert not result.ok
+    assert any("MY_SECRET" in issue.message for issue in result.issues)
+
+
+def test_scan_tree_rejects_uppercase_password_value(tmp_path):
+    file_path = tmp_path / "note.md"
+    file_path.write_text('PASSWORD="ROOTPASSWORD"\n', encoding="utf-8")
+
+    result = scan_tree(tmp_path)
+
+    assert not result.ok
+    assert any("PASSWORD" in issue.message for issue in result.issues)
+
+
+def test_scan_tree_rejects_uppercase_secret_value_under_env_constant_key(tmp_path):
+    file_path = tmp_path / "client.py"
+    file_path.write_text(
+        'ENV_ACCESS_TOKEN = "ROOTPASSWORD"\n'
+        "token = os.environ.get(ENV_ACCESS_TOKEN)\n",
+        encoding="utf-8",
+    )
+
+    result = scan_tree(tmp_path)
+
+    assert not result.ok
+    assert any("ENV_ACCESS_TOKEN" in issue.message for issue in result.issues)
+
+
+def test_scan_tree_rejects_mismatched_env_name_constant_value(tmp_path):
+    file_path = tmp_path / "client.py"
+    file_path.write_text(
+        'ENV_API_KEY = "PROD_SECRET_KEY"\n'
+        "api_key = os.environ.get(ENV_API_KEY)\n",
+        encoding="utf-8",
+    )
+
+    result = scan_tree(tmp_path)
+
+    assert not result.ok
+    assert any("ENV_API_KEY" in issue.message for issue in result.issues)
+
+
+def test_scan_tree_rejects_ambiguous_env_password_constant_value(tmp_path):
+    file_path = tmp_path / "client.py"
+    file_path.write_text(
+        'ENV_PASSWORD = "ROOT_PASSWORD"\n'
+        "password = os.environ.get(ENV_PASSWORD)\n",
+        encoding="utf-8",
+    )
+
+    result = scan_tree(tmp_path)
+
+    assert not result.ok
+    assert any("ENV_PASSWORD" in issue.message for issue in result.issues)
+
+
+def test_scan_tree_rejects_generic_env_access_token_name(tmp_path):
+    file_path = tmp_path / "client.py"
+    file_path.write_text(
+        'ENV_ACCESS_TOKEN = "ROOT_ACCESS_TOKEN"\n'
+        "token = os.environ.get(ENV_ACCESS_TOKEN)\n",
+        encoding="utf-8",
+    )
+
+    result = scan_tree(tmp_path)
+
+    assert not result.ok
+    assert any("ENV_ACCESS_TOKEN" in issue.message for issue in result.issues)
+
+
+def test_scan_tree_rejects_generic_env_api_key_name(tmp_path):
+    file_path = tmp_path / "client.py"
+    file_path.write_text(
+        'ENV_API_KEY = "PROD_SECRET_API_KEY"\n'
+        "api_key = os.environ.get(ENV_API_KEY)\n",
+        encoding="utf-8",
+    )
+
+    result = scan_tree(tmp_path)
+
+    assert not result.ok
+    assert any("ENV_API_KEY" in issue.message for issue in result.issues)
+
+
 def test_scan_tree_does_not_cross_lines_when_checking_assignments(tmp_path):
     file_path = tmp_path / "client.py"
     file_path.write_text(
