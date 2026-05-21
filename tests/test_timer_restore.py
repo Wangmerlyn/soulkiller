@@ -1,5 +1,7 @@
 import subprocess
 
+import pytest
+
 from soulkiller.config import BackupSourcesConfig, CodexMemoriesConfig, Config, ExtraBackupConfig
 from soulkiller.git_ops import commit_all_if_changed, ensure_git_repo, run_git, update_branch_to_ref
 from soulkiller.restore import list_codex_snapshots, restore_codex_snapshot_to_staging, restore_to_staging
@@ -154,3 +156,41 @@ def test_restore_codex_snapshot_to_staging_accepts_specific_commit_ref(tmp_path)
 
     assert result.copied_files == 1
     assert (staging / "MEMORY.md").read_text(encoding="utf-8") == "first codex memory\n"
+
+
+def test_restore_codex_snapshot_to_staging_rejects_dash_prefixed_ref_without_clearing(tmp_path):
+    config = make_config(tmp_path)
+    repo = config.extra_backup.repo_path
+    ensure_git_repo(repo)
+    configure_identity(repo)
+    (repo / "MEMORY.md").write_text("codex memory\n", encoding="utf-8")
+    commit = commit_all_if_changed(repo, "snapshot: codex memories")
+    assert commit.commit_hash is not None
+    update_branch_to_ref(repo, "codex/snapshots", commit.commit_hash)
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "existing.txt").write_text("keep me\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError):
+        restore_codex_snapshot_to_staging(config, "--list", staging)
+
+    assert (staging / "existing.txt").read_text(encoding="utf-8") == "keep me\n"
+
+
+def test_restore_codex_snapshot_to_staging_invalid_ref_does_not_clear_staging(tmp_path):
+    config = make_config(tmp_path)
+    repo = config.extra_backup.repo_path
+    ensure_git_repo(repo)
+    configure_identity(repo)
+    (repo / "MEMORY.md").write_text("codex memory\n", encoding="utf-8")
+    commit = commit_all_if_changed(repo, "snapshot: codex memories")
+    assert commit.commit_hash is not None
+    update_branch_to_ref(repo, "codex/snapshots", commit.commit_hash)
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "existing.txt").write_text("keep me\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError):
+        restore_codex_snapshot_to_staging(config, "missing-ref", staging)
+
+    assert (staging / "existing.txt").read_text(encoding="utf-8") == "keep me\n"

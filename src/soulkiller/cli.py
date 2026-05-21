@@ -7,6 +7,7 @@ import sys
 from .config import default_config_path, load_config, write_default_config
 from .restore import (
     list_codex_snapshots,
+    restore_codex_dry_run,
     restore_codex_snapshot_to_staging,
     restore_dry_run,
     restore_to_staging,
@@ -100,7 +101,11 @@ def command_restore(args: argparse.Namespace) -> int:
             print(snapshot)
         return 0
     if args.dry_run:
-        for item in restore_dry_run(config):
+        if args.source == "codex":
+            items = restore_codex_dry_run(config, args.snapshot)
+        else:
+            items = restore_dry_run(config)
+        for item in items:
             print(item)
         return 0
     if args.staging_dir:
