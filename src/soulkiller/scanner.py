@@ -28,8 +28,10 @@ DENIED_DIRS = {
     "transcripts",
     "telemetry",
 }
-SECRET_PATTERNS = [
-    re.compile(r"(?i)\b(api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password)\b\s*[:=]\s*['\"]?[^'\"\s]{6,}"),
+SECRET_ASSIGNMENT = re.compile(
+    r"(?i)\b(?P<key>api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password)\b\s*[:=]\s*(?P<value>[^\n#]+)"
+)
+WEBHOOK_PATTERNS = [
     re.compile(r"https://hooks\.slack\.com/services/[A-Za-z0-9/_-]+"),
     re.compile(r"https://open\.feishu\.cn/open-apis/bot/v2/hook/[A-Za-z0-9-]+"),
 ]
@@ -69,6 +71,21 @@ def _denied_path(path: Path, root: Path) -> str | None:
     return None
 
 
+def _secret_assignment_issue(text: str) -> str | None:
+    for match in SECRET_ASSIGNMENT.finditer(text):
+        key = match.group("key")
+        value = match.group("value").strip().strip("'\"`,")
+        upper_value = value.upper()
+        if "REDACTED" in upper_value:
+            continue
+        if "OS.ENVIRON" in upper_value or "GETENV" in upper_value:
+            continue
+        if upper_value.startswith("ENV_"):
+            continue
+        return key
+    return None
+
+
 def scan_tree(root: Path) -> ScanResult:
     issues: list[ScanIssue] = []
     if not root.exists():
@@ -102,11 +119,14 @@ def scan_tree(root: Path) -> ScanResult:
             issues.append(ScanIssue(path=relative, message="non-utf8 files are not allowed in memory backups"))
             continue
 
-        for pattern in SECRET_PATTERNS:
-            match = pattern.search(text)
-            if match:
-                issues.append(ScanIssue(path=relative, message=f"possible secret content: {match.group(1) if match.groups() else 'webhook'}"))
+        assignment_key = _secret_assignment_issue(text)
+        if assignment_key:
+            issues.append(ScanIssue(path=relative, message=f"possible secret content: {assignment_key}"))
+            continue
+
+        for pattern in WEBHOOK_PATTERNS:
+            if pattern.search(text):
+                issues.append(ScanIssue(path=relative, message="possible secret content: webhook"))
                 break
 
     return ScanResult(root=root, issues=issues)
-
