@@ -18,7 +18,6 @@ from .git_ops import (
     ensure_git_repo,
     is_git_repo,
     push_branch_if_configured,
-    push_if_configured,
     remove_worktree,
     run_git,
 )
@@ -319,26 +318,41 @@ def sync_extra_backup(config: Config) -> RepoSyncResult:
             error=f"repo does not exist: {section.repo_path}",
         )
 
-    ensure_git_repo(section.repo_path)
+    _ensure_repo_head(section.repo_path)
     with tempfile.TemporaryDirectory(prefix="soulkiller-extra-") as tmp:
-        staged_root = Path(tmp)
+        tmp_root = Path(tmp)
+        staged_root = tmp_root / "staged"
         mirror_extra_sources(config, staged_root)
         scan = scan_tree(staged_root)
         if not scan.ok:
             return _failed_scan_result("extra backup", section.repo_path, scan)
 
-        for name in ("codex", "claude", "manifests"):
-            destination = section.repo_path / name
-            shutil.rmtree(destination, ignore_errors=True)
-            source = staged_root / name
-            if source.exists():
-                shutil.copytree(source, destination)
-        repo_scan = scan_tree(section.repo_path)
-        if not repo_scan.ok:
-            return _failed_scan_result("extra backup", section.repo_path, repo_scan)
+        current_branch = run_git(section.repo_path, "branch", "--show-current", check=False).stdout.strip()
+        use_current_worktree = current_branch == section.main_branch
+        sync_root = section.repo_path if use_current_worktree else tmp_root / "repo"
+        try:
+            if not use_current_worktree:
+                ensure_branch_worktree(section.repo_path, section.main_branch, sync_root)
 
-    commit = commit_all_if_changed(section.repo_path, f"backup: extra memory {_timestamp()}")
-    push = push_if_configured(section.repo_path, section.auto_push) if commit.committed else PushResult(False, "no changes")
+            for name in ("codex", "claude", "manifests"):
+                destination = sync_root / name
+                shutil.rmtree(destination, ignore_errors=True)
+                source = staged_root / name
+                if source.exists():
+                    shutil.copytree(source, destination)
+            repo_scan = scan_tree(sync_root)
+            if not repo_scan.ok:
+                return _failed_scan_result("extra backup", section.repo_path, repo_scan)
+
+            commit = commit_all_if_changed(sync_root, f"backup: extra memory {_timestamp()}")
+        finally:
+            if not use_current_worktree and sync_root.exists():
+                remove_worktree(section.repo_path, sync_root)
+
+    if commit.committed:
+        push = push_branch_if_configured(section.repo_path, section.main_branch, section.auto_push)
+    else:
+        push = PushResult(False, "no changes")
     return RepoSyncResult(
         name="extra backup",
         path=section.repo_path,

@@ -216,6 +216,63 @@ def test_sync_codex_second_run_does_not_create_empty_snapshot(tmp_path):
     assert run_git(config.extra_backup.repo_path, "rev-parse", "codex/snapshots").stdout.strip() == snapshot_rev
 
 
+def test_sync_extra_backup_writes_main_branch_when_snapshot_branch_is_checked_out(tmp_path):
+    config = make_config(tmp_path)
+    config = Config(
+        codex_memories=CodexMemoriesConfig(
+            enabled=True,
+            path=config.codex_memories.path,
+            auto_push=False,
+            source_branch=config.codex_memories.source_branch,
+            snapshots_branch="codex/test-snapshots",
+        ),
+        extra_backup=config.extra_backup,
+        backup_sources=config.backup_sources,
+    )
+    config.codex_memories.path.mkdir()
+    ensure_git_repo(config.codex_memories.path)
+    configure_identity(config.codex_memories.path)
+    (config.codex_memories.path / "MEMORY.md").write_text("codex memory\n", encoding="utf-8")
+    commit_all_if_changed(config.codex_memories.path, "init: codex memories")
+    ensure_git_repo(config.extra_backup.repo_path)
+    configure_identity(config.extra_backup.repo_path)
+    (config.extra_backup.repo_path / "README.md").write_text("main branch\n", encoding="utf-8")
+    commit_all_if_changed(config.extra_backup.repo_path, "init: extra backup")
+    run_git(config.extra_backup.repo_path, "checkout", "-b", "codex/snapshots")
+    (config.extra_backup.repo_path / "snapshot.txt").write_text("snapshot branch\n", encoding="utf-8")
+    commit_all_if_changed(config.extra_backup.repo_path, "snapshot: existing")
+    custom_skill = config.backup_sources.codex_custom_skills / "custom-skill"
+    custom_skill.mkdir(parents=True)
+    (custom_skill / "SKILL.md").write_text("custom skill\n", encoding="utf-8")
+
+    result = sync_all(config)
+
+    main_skill = run_git(
+        config.extra_backup.repo_path,
+        "show",
+        "main:codex/skills/custom-skill/SKILL.md",
+        check=False,
+    )
+    snapshot_manifest = run_git(
+        config.extra_backup.repo_path,
+        "show",
+        "codex/snapshots:manifests/snapshot.json",
+        check=False,
+    )
+    snapshot_skill = run_git(
+        config.extra_backup.repo_path,
+        "show",
+        "codex/snapshots:codex/skills/custom-skill/SKILL.md",
+        check=False,
+    )
+    assert result.extra.committed is True
+    assert main_skill.returncode == 0
+    assert main_skill.stdout == "custom skill\n"
+    assert snapshot_manifest.returncode != 0
+    assert snapshot_skill.returncode != 0
+    assert run_git(config.extra_backup.repo_path, "branch", "--show-current").stdout.strip() == "codex/snapshots"
+
+
 def test_sync_all_reports_busy_when_lock_is_held(tmp_path):
     config = make_config(tmp_path)
     lock_path = tmp_path / "sync.lock"
