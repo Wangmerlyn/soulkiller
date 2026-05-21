@@ -32,6 +32,19 @@ def test_cli_status_reports_paths(tmp_path, monkeypatch):
     assert "Extra backup" in status.stdout
 
 
+def test_cli_status_reports_backup_branches(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    init = run_cli("init-config")
+    assert init.returncode == 0
+
+    status = run_cli("status")
+
+    assert status.returncode == 0
+    assert "Codex source branch: codex/source" in status.stdout
+    assert "Codex snapshots branch: codex/snapshots" in status.stdout
+    assert "Extra backup main branch: main" in status.stdout
+
+
 def test_cli_accepts_config_before_subcommand(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     config_path = tmp_path / "custom.toml"

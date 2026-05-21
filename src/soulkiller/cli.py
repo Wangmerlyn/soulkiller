@@ -29,7 +29,10 @@ def command_init_config(args: argparse.Namespace) -> int:
 def command_status(args: argparse.Namespace) -> int:
     config = load_config(_config_path(args))
     print(f"Codex memories: {config.codex_memories.path} enabled={config.codex_memories.enabled} auto_push={config.codex_memories.auto_push}")
+    print(f"Codex source branch: {config.codex_memories.source_branch}")
+    print(f"Codex snapshots branch: {config.codex_memories.snapshots_branch}")
     print(f"Extra backup: {config.extra_backup.repo_path} enabled={config.extra_backup.enabled} auto_push={config.extra_backup.auto_push}")
+    print(f"Extra backup main branch: {config.extra_backup.main_branch}")
     print(f"Codex custom skills source: {config.backup_sources.codex_custom_skills}")
     print(f"Claude projects source: {config.backup_sources.claude_projects}")
     return 0

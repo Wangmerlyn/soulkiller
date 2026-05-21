@@ -15,7 +15,10 @@ def test_write_and_load_default_config(tmp_path, monkeypatch):
     assert config.codex_memories.enabled is True
     assert config.codex_memories.path == tmp_path / ".codex" / "memories"
     assert config.codex_memories.auto_push is True
+    assert config.codex_memories.source_branch == "codex/source"
+    assert config.codex_memories.snapshots_branch == "codex/snapshots"
     assert config.extra_backup.repo_path == tmp_path / ".local" / "share" / "soulkiller" / "extra-memory-backup"
+    assert config.extra_backup.main_branch == "main"
     assert config.extra_backup.init_if_missing is True
     assert config.backup_sources.codex_custom_skills == tmp_path / ".codex" / "skills"
     assert config.backup_sources.claude_projects == tmp_path / ".claude" / "projects"
@@ -56,8 +59,44 @@ claude_projects = "~/.claude/projects"
 
     assert config.codex_memories.enabled is False
     assert config.codex_memories.path == tmp_path / ".codex" / "memories"
+    assert config.codex_memories.source_branch == "codex/source"
+    assert config.codex_memories.snapshots_branch == "codex/snapshots"
     assert config.extra_backup.repo_path == tmp_path / "extra"
+    assert config.extra_backup.main_branch == "main"
     assert config.extra_backup.init_if_missing is False
+
+
+def test_load_config_reads_branch_names(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        """
+[codex_memories]
+enabled = true
+path = "~/.codex/memories"
+auto_push = true
+source_branch = "backup/codex-source"
+snapshots_branch = "backup/codex-snapshots"
+
+[extra_backup]
+enabled = true
+repo_path = "~/extra"
+auto_push = true
+init_if_missing = true
+main_branch = "backup/main"
+
+[backup_sources]
+codex_custom_skills = "~/.codex/skills"
+claude_projects = "~/.claude/projects"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(path)
+
+    assert config.codex_memories.source_branch == "backup/codex-source"
+    assert config.codex_memories.snapshots_branch == "backup/codex-snapshots"
+    assert config.extra_backup.main_branch == "backup/main"
 
 
 def test_load_config_rejects_string_booleans(tmp_path):
