@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import json
 import shutil
+import tempfile
 
 from .config import Config
 from .git_ops import CommitResult, PushResult, commit_all_if_changed, ensure_git_repo, is_git_repo, push_if_configured
@@ -115,8 +116,8 @@ def _copy_tree(source: Path, dest: Path) -> int:
     return copied
 
 
-def mirror_extra_sources(config: Config) -> dict[str, object]:
-    repo = config.extra_backup.repo_path
+def mirror_extra_sources(config: Config, target_root: Path | None = None) -> dict[str, object]:
+    repo = target_root or config.extra_backup.repo_path
     copied_skills = 0
     copied_claude = 0
     skipped: list[str] = []
@@ -150,7 +151,7 @@ def mirror_extra_sources(config: Config) -> dict[str, object]:
         skipped.append(str(claude_root))
 
     manifest = {
-        "extra_backup_repo": str(repo),
+        "extra_backup_repo": str(config.extra_backup.repo_path),
         "sources": {
             "codex_custom_skills": str(skills_root),
             "claude_projects": str(claude_root),
@@ -185,10 +186,19 @@ def sync_extra_backup(config: Config) -> RepoSyncResult:
         )
 
     ensure_git_repo(section.repo_path)
-    mirror_extra_sources(config)
-    scan = scan_tree(section.repo_path)
-    if not scan.ok:
-        return _failed_scan_result("extra backup", section.repo_path, scan)
+    with tempfile.TemporaryDirectory(prefix="soulkiller-extra-") as tmp:
+        staged_root = Path(tmp)
+        mirror_extra_sources(config, staged_root)
+        scan = scan_tree(staged_root)
+        if not scan.ok:
+            return _failed_scan_result("extra backup", section.repo_path, scan)
+
+        for name in ("codex", "claude", "manifests"):
+            destination = section.repo_path / name
+            shutil.rmtree(destination, ignore_errors=True)
+            source = staged_root / name
+            if source.exists():
+                shutil.copytree(source, destination)
 
     commit = commit_all_if_changed(section.repo_path, f"backup: extra memory {_timestamp()}")
     push = push_if_configured(section.repo_path, section.auto_push) if commit.committed else PushResult(False, "no changes")

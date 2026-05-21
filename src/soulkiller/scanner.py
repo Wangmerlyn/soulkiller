@@ -29,7 +29,7 @@ DENIED_DIRS = {
     "telemetry",
 }
 SECRET_ASSIGNMENT = re.compile(
-    r"(?i)\b(?P<key>api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password)\b[ \t]*[:=][ \t]*(?P<value>[^\n#]+)"
+    r"(?i)(?P<key>[A-Z0-9_]*(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password)[A-Z0-9_]*)[ \t]*[:=][ \t]*(?P<value>[^\n#]+)"
 )
 WEBHOOK_PATTERNS = [
     re.compile(r"https://hooks\.slack\.com/services/[A-Za-z0-9/_-]+"),
@@ -62,6 +62,8 @@ def _denied_path(path: Path, root: Path) -> str | None:
     name = path.name
     if name in DENIED_EXACT_NAMES:
         return f"denied filename: {name}"
+    if name == ".env" or name.startswith(".env."):
+        return f"denied env filename: {name}"
     if any(name.endswith(suffix) for suffix in DENIED_SUFFIXES):
         return f"denied file suffix: {name}"
     if name.endswith(".env"):

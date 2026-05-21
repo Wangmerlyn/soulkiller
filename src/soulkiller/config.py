@@ -41,6 +41,13 @@ def default_config_path() -> Path:
     return Path("~/.config/soulkiller/config.toml").expanduser()
 
 
+def _get_bool(section: dict[str, object], key: str, default: bool, section_name: str) -> bool:
+    value = section.get(key, default)
+    if not isinstance(value, bool):
+        raise TypeError(f"{section_name}.{key} must be a boolean")
+    return value
+
+
 def load_config(path: Path | None = None) -> Config:
     config_path = path or default_config_path()
     if not config_path.exists():
@@ -53,15 +60,15 @@ def load_config(path: Path | None = None) -> Config:
 
     return Config(
         codex_memories=CodexMemoriesConfig(
-            enabled=bool(codex.get("enabled", True)),
+            enabled=_get_bool(codex, "enabled", True, "codex_memories"),
             path=expand_path(str(codex.get("path", "~/.codex/memories"))),
-            auto_push=bool(codex.get("auto_push", True)),
+            auto_push=_get_bool(codex, "auto_push", True, "codex_memories"),
         ),
         extra_backup=ExtraBackupConfig(
-            enabled=bool(extra.get("enabled", True)),
+            enabled=_get_bool(extra, "enabled", True, "extra_backup"),
             repo_path=expand_path(str(extra.get("repo_path", "~/.local/share/soulkiller/extra-memory-backup"))),
-            auto_push=bool(extra.get("auto_push", True)),
-            init_if_missing=bool(extra.get("init_if_missing", True)),
+            auto_push=_get_bool(extra, "auto_push", True, "extra_backup"),
+            init_if_missing=_get_bool(extra, "init_if_missing", True, "extra_backup"),
         ),
         backup_sources=BackupSourcesConfig(
             codex_custom_skills=expand_path(str(sources.get("codex_custom_skills", "~/.codex/skills"))),
@@ -93,4 +100,3 @@ def write_default_config(path: Path | None = None) -> Path:
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(default_config_text(), encoding="utf-8")
     return config_path
-

@@ -39,3 +39,15 @@ def test_push_if_configured_skips_without_remote(tmp_path):
     assert result.pushed is False
     assert "no git remote" in result.message
 
+
+def test_push_if_configured_rejects_detached_head(tmp_path):
+    ensure_git_repo(tmp_path)
+    configure_identity(tmp_path)
+    (tmp_path / "MEMORY.md").write_text("hello\n", encoding="utf-8")
+    commit_all_if_changed(tmp_path, "backup: test")
+    run_git(tmp_path, "checkout", "--detach", "HEAD")
+
+    result = push_if_configured(tmp_path, auto_push=True)
+
+    assert result.pushed is False
+    assert "detached HEAD" in result.message

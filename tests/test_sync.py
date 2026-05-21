@@ -80,3 +80,19 @@ def test_sync_all_fails_before_commit_when_secret_detected(tmp_path):
 
     assert not result.codex.scan.ok
     assert result.codex.committed is False
+
+
+def test_sync_all_does_not_leave_blocked_extra_source_in_repo(tmp_path):
+    config = make_config(tmp_path)
+    config.codex_memories.path.mkdir()
+    ensure_git_repo(config.codex_memories.path)
+    configure_identity(config.codex_memories.path)
+    unsafe_skill = config.backup_sources.codex_custom_skills / "unsafe"
+    unsafe_skill.mkdir(parents=True)
+    (unsafe_skill / "auth.json").write_text("{}", encoding="utf-8")
+
+    result = sync_all(config)
+
+    assert not result.extra.scan.ok
+    assert result.extra.committed is False
+    assert not (config.extra_backup.repo_path / "codex" / "skills" / "unsafe" / "auth.json").exists()

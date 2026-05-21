@@ -59,3 +59,29 @@ claude_projects = "~/.claude/projects"
     assert config.extra_backup.repo_path == tmp_path / "extra"
     assert config.extra_backup.init_if_missing is False
 
+
+def test_load_config_rejects_string_booleans(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        """
+[codex_memories]
+enabled = true
+path = "~/.codex/memories"
+auto_push = "false"
+
+[extra_backup]
+enabled = true
+repo_path = "~/extra"
+auto_push = false
+init_if_missing = true
+
+[backup_sources]
+codex_custom_skills = "~/.codex/skills"
+claude_projects = "~/.claude/projects"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(TypeError, match="codex_memories.auto_push"):
+        load_config(path)

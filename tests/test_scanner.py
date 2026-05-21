@@ -10,6 +10,15 @@ def test_scan_tree_rejects_secret_filename(tmp_path):
     assert any("auth.json" in issue.path for issue in result.issues)
 
 
+def test_scan_tree_rejects_env_variant_filename(tmp_path):
+    (tmp_path / ".env.local").write_text("OPENAI_API_KEY=abc123456789\n", encoding="utf-8")
+
+    result = scan_tree(tmp_path)
+
+    assert not result.ok
+    assert any(".env.local" in issue.path for issue in result.issues)
+
+
 def test_scan_tree_rejects_secret_content(tmp_path):
     file_path = tmp_path / "note.md"
     file_path.write_text("api_key = 'abc123'\n", encoding="utf-8")
@@ -18,6 +27,16 @@ def test_scan_tree_rejects_secret_content(tmp_path):
 
     assert not result.ok
     assert any("api_key" in issue.message for issue in result.issues)
+
+
+def test_scan_tree_rejects_prefixed_api_key_assignment(tmp_path):
+    file_path = tmp_path / "note.md"
+    file_path.write_text("OPENAI_API_KEY=sk-abc123456789\n", encoding="utf-8")
+
+    result = scan_tree(tmp_path)
+
+    assert not result.ok
+    assert any("OPENAI_API_KEY" in issue.message for issue in result.issues)
 
 
 def test_scan_tree_allows_redacted_secret_reference(tmp_path):
