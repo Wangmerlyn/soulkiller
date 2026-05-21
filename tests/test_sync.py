@@ -1,5 +1,6 @@
 import json
 import subprocess
+import fcntl
 
 from soulkiller.config import BackupSourcesConfig, CodexMemoriesConfig, Config, ExtraBackupConfig
 from soulkiller.git_ops import ensure_git_repo
@@ -96,3 +97,16 @@ def test_sync_all_does_not_leave_blocked_extra_source_in_repo(tmp_path):
     assert not result.extra.scan.ok
     assert result.extra.committed is False
     assert not (config.extra_backup.repo_path / "codex" / "skills" / "unsafe" / "auth.json").exists()
+
+
+def test_sync_all_reports_busy_when_lock_is_held(tmp_path):
+    config = make_config(tmp_path)
+    lock_path = tmp_path / "sync.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("w", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+        result = sync_all(config, lock_path=lock_path)
+
+        assert result.codex.error == "another sync is already running"
+        assert result.extra.error == "another sync is already running"

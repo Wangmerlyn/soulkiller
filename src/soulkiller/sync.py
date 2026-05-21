@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from contextlib import contextmanager
+import fcntl
 import json
 import shutil
 import tempfile
@@ -36,6 +38,23 @@ def _timestamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
+def default_lock_path() -> Path:
+    return Path("~/.local/state/soulkiller/sync.lock").expanduser()
+
+
+@contextmanager
+def _sync_lock(lock_path: Path):
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("w", encoding="utf-8") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        yield True
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
 def _disabled_result(name: str, path: Path) -> RepoSyncResult:
     return RepoSyncResult(
         name=name,
@@ -61,6 +80,20 @@ def _failed_scan_result(name: str, path: Path, scan: ScanResult) -> RepoSyncResu
         pushed=False,
         push_message="not pushed",
         error="safety scan failed",
+    )
+
+
+def _busy_result(name: str, path: Path) -> RepoSyncResult:
+    return RepoSyncResult(
+        name=name,
+        path=path,
+        scan=ScanResult(root=path, issues=[]),
+        committed=False,
+        commit_hash=None,
+        commit_message="sync lock busy",
+        pushed=False,
+        push_message="not pushed",
+        error="another sync is already running",
     )
 
 
@@ -214,5 +247,11 @@ def sync_extra_backup(config: Config) -> RepoSyncResult:
     )
 
 
-def sync_all(config: Config) -> SyncResult:
-    return SyncResult(codex=sync_codex_memories(config), extra=sync_extra_backup(config))
+def sync_all(config: Config, lock_path: Path | None = None) -> SyncResult:
+    with _sync_lock(lock_path or default_lock_path()) as acquired:
+        if not acquired:
+            return SyncResult(
+                codex=_busy_result("codex memories", config.codex_memories.path),
+                extra=_busy_result("extra backup", config.extra_backup.repo_path),
+            )
+        return SyncResult(codex=sync_codex_memories(config), extra=sync_extra_backup(config))
