@@ -56,7 +56,7 @@ Soulkiller reads configuration from:
 Create a starter config with:
 
 ```sh
-soulkiller init-config
+./bin/soulkiller init-config
 ```
 
 The config should point to the local private backup repository, the Codex memory
@@ -65,19 +65,19 @@ repository, and any Claude project memory locations you want included.
 ## Commands
 
 ```sh
-soulkiller init-config
+./bin/soulkiller init-config
 ```
 
 Create `~/.config/soulkiller/config.toml` with editable defaults.
 
 ```sh
-soulkiller status
+./bin/soulkiller status
 ```
 
 Show configured paths and whether each backup target is enabled.
 
 ```sh
-soulkiller sync
+./bin/soulkiller sync
 ```
 
 Scan configured inputs, update the private backup repository, commit changes,
@@ -85,19 +85,19 @@ and push configured remotes. Codex memory is committed and pushed in
 `~/.codex/memories`.
 
 ```sh
-soulkiller install-timer
+./bin/soulkiller install-timer
 ```
 
 Install a systemd user timer for scheduled syncs.
 
 ```sh
-soulkiller restore --dry-run
+./bin/soulkiller restore --dry-run
 ```
 
 Preview what would be restored without writing files.
 
 ```sh
-soulkiller restore --staging-dir <path>
+./bin/soulkiller restore --staging-dir <path>
 ```
 
 Restore into a staging directory for manual inspection. Soulkiller should not
@@ -108,7 +108,7 @@ overwrite live memory directly during a restore.
 The primary supported scheduler is a systemd user timer:
 
 ```sh
-soulkiller install-timer
+./bin/soulkiller install-timer --enable
 systemctl --user list-timers soulkiller*
 ```
 
@@ -116,7 +116,7 @@ If systemd user services are unavailable, use cron as a fallback and run the
 same sync command on your preferred schedule:
 
 ```cron
-0 */6 * * * soulkiller sync
+0 */6 * * * /path/to/soulkiller/bin/soulkiller sync
 ```
 
 ## Safety Scan
@@ -143,7 +143,7 @@ inputs or add a narrower include path.
 Always restore to a staging directory first:
 
 ```sh
-soulkiller restore --staging-dir /tmp/soulkiller-restore
+./bin/soulkiller restore --staging-dir /tmp/soulkiller-restore
 ```
 
 Inspect the staged files, then manually copy back only the memory or skill data

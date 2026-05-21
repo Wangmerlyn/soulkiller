@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+set -eu
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+
+if [ "${PYTHONPATH:-}" ]; then
+  export PYTHONPATH="$repo_root/src:$PYTHONPATH"
+else
+  export PYTHONPATH="$repo_root/src"
+fi
+
+exec python3 -m soulkiller "$@"
