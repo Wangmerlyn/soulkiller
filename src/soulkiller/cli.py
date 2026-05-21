@@ -39,7 +39,9 @@ def _print_repo_result(result: RepoSyncResult) -> None:
     print(f"{result.name}: {result.path}")
     if result.error:
         print(f"  error: {result.error}")
-    if not result.scan.ok:
+    if result.scan_skipped:
+        print("  safety scan: skipped")
+    elif not result.scan.ok:
         print("  safety scan failed:")
         for issue in result.scan.issues:
             print(f"    {issue.path}: {issue.message}")

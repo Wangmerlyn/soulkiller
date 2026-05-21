@@ -35,6 +35,26 @@ WEBHOOK_PATTERNS = [
     re.compile(r"https://hooks\.slack\.com/services/[A-Za-z0-9/_-]+"),
     re.compile(r"https://open\.feishu\.cn/open-apis/bot/v2/hook/[A-Za-z0-9-]+"),
 ]
+ENV_NAME_VALUE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+ENV_NAME_CONSTANT_KEY = re.compile(
+    r"^ENV_(?P<suffix>[A-Z0-9_]*(?:API_KEY|ACCESS_TOKEN|REFRESH_TOKEN|SECRET|PASSWORD)[A-Z0-9_]*)$"
+)
+GENERIC_ENV_NAME_PREFIX_PARTS = {
+    "ACCESS",
+    "ADMIN",
+    "DEFAULT",
+    "KEY",
+    "PASSWORD",
+    "PROD",
+    "PRODUCTION",
+    "REAL",
+    "REFRESH",
+    "ROOT",
+    "SECRET",
+    "TOKEN",
+}
+CHINESE_PLACEHOLDER_MARKERS = ("你的", "您的", "你自己的", "您自己的")
+CHINESE_SECRET_WORDS = ("令牌", "密钥", "密码")
 
 
 @dataclass(frozen=True)
@@ -55,6 +75,47 @@ class ScanResult:
 
 def _is_binary(sample: bytes) -> bool:
     return b"\x00" in sample
+
+
+def _is_placeholder_secret_value(value: str, upper_value: str) -> bool:
+    if "..." in value:
+        return True
+    if "REDACTED" in upper_value:
+        return True
+    if any(marker in value for marker in CHINESE_PLACEHOLDER_MARKERS):
+        return any(secret_word in value for secret_word in CHINESE_SECRET_WORDS)
+    return False
+
+
+def _uses_env_name_constant(text: str, key: str) -> bool:
+    escaped_key = re.escape(key)
+    return any(
+        re.search(pattern, text)
+        for pattern in (
+            rf"\bos\.environ\.get\(\s*{escaped_key}\b",
+            rf"\bos\.environ\[\s*{escaped_key}\s*\]",
+            rf"\bos\.getenv\(\s*{escaped_key}\b",
+            rf"\bgetenv\(\s*{escaped_key}\b",
+        )
+    )
+
+
+def _is_env_name_constant_assignment(key: str, value: str, text: str) -> bool:
+    key_match = ENV_NAME_CONSTANT_KEY.fullmatch(key)
+    if not key_match or not ENV_NAME_VALUE.fullmatch(value):
+        return False
+
+    suffix = key_match.group("suffix")
+    if "_" not in suffix or not value.endswith(f"_{suffix}"):
+        return False
+
+    prefix = value[: -(len(suffix) + 1)]
+    if not prefix:
+        return False
+    if any(part in GENERIC_ENV_NAME_PREFIX_PARTS for part in prefix.split("_")):
+        return False
+
+    return _uses_env_name_constant(text, key)
 
 
 def _denied_path(path: Path, root: Path) -> str | None:
@@ -78,13 +139,11 @@ def _secret_assignment_issue(text: str) -> str | None:
         key = match.group("key")
         value = match.group("value").strip().strip("'\"`,")
         upper_value = value.upper()
-        if "..." in value:
-            continue
-        if "REDACTED" in upper_value:
+        if _is_placeholder_secret_value(value, upper_value):
             continue
         if "OS.ENVIRON" in upper_value or "GETENV" in upper_value:
             continue
-        if upper_value.startswith("ENV_"):
+        if _is_env_name_constant_assignment(key, value, text):
             continue
         return key
     return None

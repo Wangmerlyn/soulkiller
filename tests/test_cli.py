@@ -1,5 +1,9 @@
 import subprocess
 
+from soulkiller.cli import _print_repo_result
+from soulkiller.scanner import ScanResult
+from soulkiller.sync import RepoSyncResult
+
 
 def run_cli(*args, env=None):
     command = ["bin/soulkiller", *args]
@@ -38,3 +42,22 @@ def test_cli_accepts_config_before_subcommand(tmp_path, monkeypatch):
 
     assert status.returncode == 0
     assert str(tmp_path / ".codex" / "memories") in status.stdout
+
+
+def test_print_repo_result_reports_skipped_scan(tmp_path, capsys):
+    result = RepoSyncResult(
+        name="codex memories",
+        path=tmp_path / "memories",
+        scan=ScanResult(root=tmp_path / "memories", issues=[]),
+        scan_skipped=True,
+        committed=False,
+        commit_hash=None,
+        commit_message="no changes",
+        pushed=False,
+        push_message="no changes",
+    )
+
+    _print_repo_result(result)
+
+    output = capsys.readouterr().out
+    assert "safety scan: skipped" in output
