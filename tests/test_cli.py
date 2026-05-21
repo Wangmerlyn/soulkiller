@@ -67,6 +67,21 @@ def test_restore_parser_accepts_codex_snapshot_source():
     assert args.staging_dir == "/tmp/stage"
 
 
+def test_restore_parser_accepts_list_snapshots_for_codex_source():
+    args = build_parser().parse_args(["restore", "--list-snapshots", "--source", "codex"])
+
+    assert args.list_snapshots is True
+    assert args.source == "codex"
+
+
+def test_restore_parser_defaults_to_extra_latest_without_list_snapshots():
+    args = build_parser().parse_args(["restore", "--dry-run"])
+
+    assert args.source == "extra"
+    assert args.snapshot == "latest"
+    assert args.list_snapshots is False
+
+
 def test_print_repo_result_reports_skipped_scan(tmp_path, capsys):
     result = RepoSyncResult(
         name="codex memories",

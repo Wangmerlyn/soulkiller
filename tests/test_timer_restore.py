@@ -1,7 +1,7 @@
 import subprocess
 
 from soulkiller.config import BackupSourcesConfig, CodexMemoriesConfig, Config, ExtraBackupConfig
-from soulkiller.git_ops import commit_all_if_changed, ensure_git_repo, update_branch_to_ref
+from soulkiller.git_ops import commit_all_if_changed, ensure_git_repo, run_git, update_branch_to_ref
 from soulkiller.restore import list_codex_snapshots, restore_codex_snapshot_to_staging, restore_to_staging
 from soulkiller.timer import build_service_unit, build_timer_unit, install_timer
 
@@ -132,3 +132,25 @@ def test_restore_codex_snapshot_to_staging_copies_selected_ref(tmp_path):
     assert result.copied_files == 1
     assert (staging / "MEMORY.md").read_text(encoding="utf-8") == "codex memory\n"
     assert not (staging / "stale.txt").exists()
+
+
+def test_restore_codex_snapshot_to_staging_accepts_specific_commit_ref(tmp_path):
+    config = make_config(tmp_path)
+    repo = config.extra_backup.repo_path
+    ensure_git_repo(repo)
+    configure_identity(repo)
+    (repo / "MEMORY.md").write_text("first codex memory\n", encoding="utf-8")
+    first = commit_all_if_changed(repo, "snapshot: first codex memories")
+    assert first.commit_hash is not None
+    first_commit = run_git(repo, "rev-parse", "HEAD").stdout.strip()
+    update_branch_to_ref(repo, "codex/snapshots", first_commit)
+    (repo / "MEMORY.md").write_text("second codex memory\n", encoding="utf-8")
+    second = commit_all_if_changed(repo, "snapshot: second codex memories")
+    assert second.commit_hash is not None
+    update_branch_to_ref(repo, "codex/snapshots", second.commit_hash)
+    staging = tmp_path / "staging"
+
+    result = restore_codex_snapshot_to_staging(config, first_commit, staging)
+
+    assert result.copied_files == 1
+    assert (staging / "MEMORY.md").read_text(encoding="utf-8") == "first codex memory\n"
