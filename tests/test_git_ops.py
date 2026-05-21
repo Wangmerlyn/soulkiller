@@ -1,5 +1,7 @@
 import subprocess
 
+import pytest
+
 from soulkiller.git_ops import (
     branch_exists,
     commit_all_if_changed,
@@ -93,6 +95,27 @@ def test_ensure_branch_worktree_replaces_plain_directory(tmp_path):
 
     assert run_git(worktree_path, "branch", "--show-current").stdout.strip() == "codex/snapshots"
     assert stale_file.exists() is False
+
+
+def test_ensure_branch_worktree_rejects_unregistered_git_repo_on_branch(tmp_path):
+    repo = tmp_path / "repo"
+    worktree_path = tmp_path / "snapshots"
+    ensure_git_repo(repo)
+    configure_identity(repo)
+    (repo / "MEMORY.md").write_text("source\n", encoding="utf-8")
+    commit_all_if_changed(repo, "backup: source")
+    ensure_git_repo(worktree_path)
+    configure_identity(worktree_path)
+    (worktree_path / "README.md").write_text("unrelated repo\n", encoding="utf-8")
+    commit_all_if_changed(worktree_path, "initial unrelated")
+    run_git(worktree_path, "checkout", "-b", "codex/snapshots")
+    marker = worktree_path / "do-not-delete.txt"
+    marker.write_text("keep this\n", encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        ensure_branch_worktree(repo, "codex/snapshots", worktree_path)
+
+    assert marker.read_text(encoding="utf-8") == "keep this\n"
 
 
 def test_push_if_configured_skips_without_remote(tmp_path):

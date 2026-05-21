@@ -73,13 +73,26 @@ def update_branch_to_ref(repo: Path, branch: str, ref: str) -> None:
 
 
 def ensure_branch_worktree(repo: Path, branch: str, worktree_path: Path) -> None:
-    if worktree_path.exists():
-        if is_git_repo(worktree_path) and current_branch(worktree_path) == branch:
+    if path_present(worktree_path):
+        registered_branch = registered_worktree_branch(repo, worktree_path)
+        path_is_git_repo = is_git_repo(worktree_path)
+
+        if path_is_git_repo and registered_branch is None:
+            raise ValueError(f"{worktree_path} is a git repo but not a registered worktree of {repo}")
+
+        if registered_branch == branch:
+            if not path_is_git_repo:
+                raise ValueError(f"{worktree_path} is registered as a worktree but is not a git repo")
             run_git(worktree_path, "reset", "--hard")
             run_git(worktree_path, "clean", "-fd")
             return
-        remove_worktree(repo, worktree_path)
-        remove_path_if_present(worktree_path)
+
+        if registered_branch is None:
+            remove_path_if_present(worktree_path)
+        else:
+            remove_worktree(repo, worktree_path)
+            if path_present(worktree_path):
+                raise ValueError(f"failed to remove registered worktree {worktree_path}")
 
     if branch_exists(repo, branch):
         run_git(repo, "worktree", "add", str(worktree_path), branch)
@@ -88,16 +101,43 @@ def ensure_branch_worktree(repo: Path, branch: str, worktree_path: Path) -> None
 
 
 def remove_worktree(repo: Path, worktree_path: Path) -> None:
-    run_git(repo, "worktree", "remove", "--force", str(worktree_path), check=False)
+    result = run_git(repo, "worktree", "remove", "--force", str(worktree_path), check=False)
+    if result.returncode != 0 and path_present(worktree_path):
+        reason = result.stderr.strip() or "unknown error"
+        raise ValueError(f"failed to remove registered worktree {worktree_path}: {reason}")
 
 
 def remove_path_if_present(path: Path) -> None:
-    if not path.exists() and not path.is_symlink():
+    if not path_present(path):
         return
     if path.is_dir() and not path.is_symlink():
         shutil.rmtree(path)
     else:
         path.unlink()
+
+
+def path_present(path: Path) -> bool:
+    return path.exists() or path.is_symlink()
+
+
+def registered_worktree_branch(repo: Path, worktree_path: Path) -> str | None:
+    target = worktree_path.resolve()
+    current_path: Path | None = None
+    current_branch = ""
+    result = run_git(repo, "worktree", "list", "--porcelain")
+
+    for line in [*result.stdout.splitlines(), ""]:
+        if line == "":
+            if current_path is not None and current_path.resolve() == target:
+                return current_branch
+            current_path = None
+            current_branch = ""
+        elif line.startswith("worktree "):
+            current_path = Path(line.removeprefix("worktree "))
+        elif line.startswith("branch "):
+            current_branch = line.removeprefix("branch ").removeprefix("refs/heads/")
+
+    return None
 
 
 def has_remote(repo: Path) -> bool:
