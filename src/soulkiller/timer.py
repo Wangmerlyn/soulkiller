@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 
 @dataclass(frozen=True)
@@ -19,6 +20,9 @@ def default_unit_dir() -> Path:
 
 
 def _soulkiller_command() -> str:
+    argv0 = Path(sys.argv[0]).expanduser()
+    if argv0.name == "soulkiller" and argv0.exists():
+        return str(argv0.resolve())
     return shutil.which("soulkiller") or "soulkiller"
 
 
@@ -70,4 +74,3 @@ def install_timer(config_path: Path, unit_dir: Path | None = None, enable: bool 
             message=enable_result.stderr.strip() or enable_result.stdout.strip(),
         )
     return TimerInstallResult(service_path, timer_path, enabled=True, message="timer enabled")
-

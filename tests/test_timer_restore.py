@@ -31,6 +31,18 @@ def test_build_systemd_units_include_sync_command(tmp_path):
     assert "Persistent=true" in timer
 
 
+def test_build_service_unit_prefers_running_soulkiller_script(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.toml"
+    fake_script = tmp_path / ".venv" / "bin" / "soulkiller"
+    fake_script.parent.mkdir(parents=True)
+    fake_script.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr("sys.argv", [str(fake_script), "install-timer"])
+
+    service = build_service_unit(config_path)
+
+    assert f"ExecStart={fake_script} sync --config {config_path}" in service
+
+
 def test_install_timer_writes_units_without_enabling(tmp_path):
     config_path = tmp_path / "config.toml"
     unit_dir = tmp_path / "systemd"
@@ -53,4 +65,3 @@ def test_restore_to_staging_copies_extra_backup(tmp_path):
 
     assert result.copied_files == 1
     assert (staging / "claude" / "project-memories" / "project" / "memory" / "notes.md").exists()
-
