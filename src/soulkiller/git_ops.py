@@ -55,6 +55,40 @@ def commit_all_if_changed(repo: Path, message: str) -> CommitResult:
     return CommitResult(committed=True, commit_hash=commit_hash, message=message)
 
 
+def branch_exists(repo: Path, branch: str) -> bool:
+    result = run_git(
+        repo,
+        "show-ref",
+        "--verify",
+        "--quiet",
+        f"refs/heads/{branch}",
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def update_branch_to_ref(repo: Path, branch: str, ref: str) -> None:
+    run_git(repo, "branch", "-f", branch, ref)
+
+
+def ensure_branch_worktree(repo: Path, branch: str, worktree_path: Path) -> None:
+    if worktree_path.exists():
+        if is_git_repo(worktree_path) and current_branch(worktree_path) == branch:
+            run_git(worktree_path, "reset", "--hard")
+            run_git(worktree_path, "clean", "-fd")
+            return
+        remove_worktree(repo, worktree_path)
+
+    if branch_exists(repo, branch):
+        run_git(repo, "worktree", "add", str(worktree_path), branch)
+    else:
+        run_git(repo, "worktree", "add", "-b", branch, str(worktree_path))
+
+
+def remove_worktree(repo: Path, worktree_path: Path) -> None:
+    run_git(repo, "worktree", "remove", "--force", str(worktree_path), check=False)
+
+
 def has_remote(repo: Path) -> bool:
     result = run_git(repo, "remote")
     return bool(result.stdout.strip())
@@ -81,3 +115,22 @@ def push_if_configured(repo: Path, auto_push: bool) -> PushResult:
     else:
         run_git(repo, "push", "-u", "origin", branch)
     return PushResult(pushed=True, message="pushed")
+
+
+def push_branch_if_configured(
+    repo: Path,
+    branch: str,
+    auto_push: bool,
+    force_with_lease: bool = False,
+) -> PushResult:
+    if not auto_push:
+        return PushResult(pushed=False, message="auto_push disabled")
+    if not has_remote(repo):
+        return PushResult(pushed=False, message="no git remote configured; push skipped")
+
+    args = ["push"]
+    if force_with_lease:
+        args.append("--force-with-lease")
+    args.extend(["origin", f"{branch}:{branch}"])
+    run_git(repo, *args)
+    return PushResult(pushed=True, message=f"pushed {branch}")
