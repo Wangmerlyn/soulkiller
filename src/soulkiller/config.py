@@ -10,6 +10,8 @@ class CodexMemoriesConfig:
     enabled: bool
     path: Path
     auto_push: bool
+    source_branch: str = "codex/source"
+    snapshots_branch: str = "codex/snapshots"
 
 
 @dataclass(frozen=True)
@@ -18,6 +20,7 @@ class ExtraBackupConfig:
     repo_path: Path
     auto_push: bool
     init_if_missing: bool
+    main_branch: str = "main"
 
 
 @dataclass(frozen=True)
@@ -66,12 +69,15 @@ def load_config(path: Path | None = None) -> Config:
             enabled=_get_bool(codex, "enabled", True, "codex_memories"),
             path=expand_path(str(codex.get("path", "~/.codex/memories")), config_path.parent),
             auto_push=_get_bool(codex, "auto_push", True, "codex_memories"),
+            source_branch=str(codex.get("source_branch", "codex/source")),
+            snapshots_branch=str(codex.get("snapshots_branch", "codex/snapshots")),
         ),
         extra_backup=ExtraBackupConfig(
             enabled=_get_bool(extra, "enabled", True, "extra_backup"),
             repo_path=expand_path(str(extra.get("repo_path", "~/.local/share/soulkiller/extra-memory-backup")), config_path.parent),
             auto_push=_get_bool(extra, "auto_push", True, "extra_backup"),
             init_if_missing=_get_bool(extra, "init_if_missing", True, "extra_backup"),
+            main_branch=str(extra.get("main_branch", "main")),
         ),
         backup_sources=BackupSourcesConfig(
             codex_custom_skills=expand_path(str(sources.get("codex_custom_skills", "~/.codex/skills")), config_path.parent),
@@ -85,12 +91,15 @@ def default_config_text() -> str:
 enabled = true
 path = "~/.codex/memories"
 auto_push = true
+source_branch = "codex/source"
+snapshots_branch = "codex/snapshots"
 
 [extra_backup]
 enabled = true
 repo_path = "~/.local/share/soulkiller/extra-memory-backup"
 auto_push = true
 init_if_missing = true
+main_branch = "main"
 
 [backup_sources]
 codex_custom_skills = "~/.codex/skills"

@@ -5,7 +5,13 @@ from pathlib import Path
 import sys
 
 from .config import default_config_path, load_config, write_default_config
-from .restore import restore_dry_run, restore_to_staging
+from .restore import (
+    list_codex_snapshots,
+    restore_codex_dry_run,
+    restore_codex_snapshot_to_staging,
+    restore_dry_run,
+    restore_to_staging,
+)
 from .scheduler import install_cron, install_tmux_loop
 from .sync import RepoSyncResult, sync_all
 from .timer import install_timer
@@ -29,7 +35,10 @@ def command_init_config(args: argparse.Namespace) -> int:
 def command_status(args: argparse.Namespace) -> int:
     config = load_config(_config_path(args))
     print(f"Codex memories: {config.codex_memories.path} enabled={config.codex_memories.enabled} auto_push={config.codex_memories.auto_push}")
+    print(f"Codex source branch: {config.codex_memories.source_branch}")
+    print(f"Codex snapshots branch: {config.codex_memories.snapshots_branch}")
     print(f"Extra backup: {config.extra_backup.repo_path} enabled={config.extra_backup.enabled} auto_push={config.extra_backup.auto_push}")
+    print(f"Extra backup main branch: {config.extra_backup.main_branch}")
     print(f"Codex custom skills source: {config.backup_sources.codex_custom_skills}")
     print(f"Claude projects source: {config.backup_sources.claude_projects}")
     return 0
@@ -87,12 +96,24 @@ def command_install_tmux_loop(args: argparse.Namespace) -> int:
 
 def command_restore(args: argparse.Namespace) -> int:
     config = load_config(_config_path(args))
+    if args.list_snapshots:
+        for snapshot in list_codex_snapshots(config):
+            print(snapshot)
+        return 0
     if args.dry_run:
-        for item in restore_dry_run(config):
+        if args.source == "codex":
+            items = restore_codex_dry_run(config, args.snapshot)
+        else:
+            items = restore_dry_run(config)
+        for item in items:
             print(item)
         return 0
     if args.staging_dir:
-        result = restore_to_staging(config, Path(args.staging_dir).expanduser())
+        staging_dir = Path(args.staging_dir).expanduser()
+        if args.source == "codex":
+            result = restore_codex_snapshot_to_staging(config, args.snapshot, staging_dir)
+        else:
+            result = restore_to_staging(config, staging_dir)
         print(f"copied {result.copied_files} files to {result.staging_dir}")
         return 0
     print("restore requires --dry-run or --staging-dir", file=sys.stderr)
@@ -134,6 +155,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     restore_parser = subparsers.add_parser("restore")
     restore_parser.add_argument("--config", dest="command_config", help="Path to config.toml")
+    restore_parser.add_argument("--source", choices=["extra", "codex"], default="extra")
+    restore_parser.add_argument("--snapshot", default="latest")
+    restore_parser.add_argument("--list-snapshots", action="store_true")
     restore_parser.add_argument("--dry-run", action="store_true")
     restore_parser.add_argument("--staging-dir")
     restore_parser.set_defaults(func=command_restore)

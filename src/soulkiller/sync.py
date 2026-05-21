@@ -10,7 +10,17 @@ import shutil
 import tempfile
 
 from .config import Config
-from .git_ops import CommitResult, PushResult, commit_all_if_changed, ensure_git_repo, is_git_repo, push_if_configured
+from .git_ops import (
+    PushResult,
+    branch_exists,
+    commit_all_if_changed,
+    ensure_branch_worktree,
+    ensure_git_repo,
+    is_git_repo,
+    push_branch_if_configured,
+    remove_worktree,
+    run_git,
+)
 from .scanner import ScanResult, scan_tree
 
 
@@ -99,6 +109,52 @@ def _busy_result(name: str, path: Path) -> RepoSyncResult:
     )
 
 
+def _missing_backup_repo_result(name: str, path: Path, repo: Path) -> RepoSyncResult:
+    return RepoSyncResult(
+        name=name,
+        path=path,
+        scan=ScanResult(root=path, issues=[]),
+        committed=False,
+        commit_hash=None,
+        commit_message="repo missing",
+        pushed=False,
+        push_message="not pushed",
+        scan_skipped=True,
+        error=f"repo missing: {repo}",
+    )
+
+
+def _ensure_repo_head(repo: Path) -> None:
+    ensure_git_repo(repo)
+    head = run_git(repo, "rev-parse", "--verify", "HEAD", check=False)
+    if head.returncode != 0:
+        run_git(repo, "commit", "--allow-empty", "-m", "init: soulkiller backup repo")
+
+
+def _remove_non_git_contents(path: Path) -> None:
+    for child in path.iterdir():
+        if child.name == ".git":
+            continue
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
+def _combine_push_results(results: list[PushResult]) -> PushResult:
+    if not results:
+        return PushResult(False, "no changes")
+    return PushResult(
+        pushed=any(result.pushed for result in results),
+        message="; ".join(result.message for result in results),
+    )
+
+
+def _push_branch_if_configured(repo: Path, branch: str, auto_push: bool, force_with_lease: bool) -> PushResult:
+    result = push_branch_if_configured(repo, branch, auto_push, force_with_lease=force_with_lease)
+    return PushResult(result.pushed, f"{branch}: {result.message}")
+
+
 def sync_codex_memories(config: Config) -> RepoSyncResult:
     section = config.codex_memories
     if not section.enabled:
@@ -116,8 +172,56 @@ def sync_codex_memories(config: Config) -> RepoSyncResult:
             error=f"not a git repository: {section.path}",
         )
 
-    commit = commit_all_if_changed(section.path, f"backup: codex memories {_timestamp()}")
-    push = push_if_configured(section.path, section.auto_push) if commit.committed else PushResult(False, "no changes")
+    backup_repo = config.extra_backup.repo_path
+    if not backup_repo.exists() and not config.extra_backup.init_if_missing:
+        return _missing_backup_repo_result("codex memories", section.path, backup_repo)
+
+    _ensure_repo_head(backup_repo)
+
+    source_branch_updated = False
+    source_head = run_git(section.path, "rev-parse", "--verify", "HEAD", check=False)
+    if source_head.returncode == 0:
+        source_ref = source_head.stdout.strip()
+        previous_source_ref = None
+        if branch_exists(backup_repo, section.source_branch):
+            previous_source_ref = run_git(backup_repo, "rev-parse", section.source_branch).stdout.strip()
+        run_git(backup_repo, "fetch", str(section.path), f"+{source_ref}:refs/heads/{section.source_branch}")
+        source_branch_updated = previous_source_ref != source_ref
+
+    current_branch = run_git(backup_repo, "branch", "--show-current", check=False).stdout.strip()
+    use_current_snapshot_worktree = current_branch == section.snapshots_branch
+    with tempfile.TemporaryDirectory(prefix="soulkiller-codex-snapshot-") as tmp:
+        snapshot_worktree = backup_repo if use_current_snapshot_worktree else Path(tmp) / "snapshot"
+        try:
+            if not use_current_snapshot_worktree:
+                ensure_branch_worktree(backup_repo, section.snapshots_branch, snapshot_worktree)
+            _remove_non_git_contents(snapshot_worktree)
+            _copy_tree(section.path, snapshot_worktree)
+            commit = commit_all_if_changed(snapshot_worktree, f"snapshot: codex memories {_timestamp()}")
+        finally:
+            if not use_current_snapshot_worktree and snapshot_worktree.exists():
+                remove_worktree(backup_repo, snapshot_worktree)
+
+    push_results: list[PushResult] = []
+    if source_branch_updated:
+        push_results.append(
+            _push_branch_if_configured(
+                backup_repo,
+                section.source_branch,
+                section.auto_push,
+                force_with_lease=True,
+            )
+        )
+    if commit.committed:
+        push_results.append(
+            _push_branch_if_configured(
+                backup_repo,
+                section.snapshots_branch,
+                section.auto_push,
+                force_with_lease=False,
+            )
+        )
+    push = _combine_push_results(push_results)
     return RepoSyncResult(
         name="codex memories",
         path=section.path,
@@ -217,26 +321,41 @@ def sync_extra_backup(config: Config) -> RepoSyncResult:
             error=f"repo does not exist: {section.repo_path}",
         )
 
-    ensure_git_repo(section.repo_path)
+    _ensure_repo_head(section.repo_path)
     with tempfile.TemporaryDirectory(prefix="soulkiller-extra-") as tmp:
-        staged_root = Path(tmp)
+        tmp_root = Path(tmp)
+        staged_root = tmp_root / "staged"
         mirror_extra_sources(config, staged_root)
         scan = scan_tree(staged_root)
         if not scan.ok:
             return _failed_scan_result("extra backup", section.repo_path, scan)
 
-        for name in ("codex", "claude", "manifests"):
-            destination = section.repo_path / name
-            shutil.rmtree(destination, ignore_errors=True)
-            source = staged_root / name
-            if source.exists():
-                shutil.copytree(source, destination)
-        repo_scan = scan_tree(section.repo_path)
-        if not repo_scan.ok:
-            return _failed_scan_result("extra backup", section.repo_path, repo_scan)
+        current_branch = run_git(section.repo_path, "branch", "--show-current", check=False).stdout.strip()
+        use_current_worktree = current_branch == section.main_branch
+        sync_root = section.repo_path if use_current_worktree else tmp_root / "repo"
+        try:
+            if not use_current_worktree:
+                ensure_branch_worktree(section.repo_path, section.main_branch, sync_root)
 
-    commit = commit_all_if_changed(section.repo_path, f"backup: extra memory {_timestamp()}")
-    push = push_if_configured(section.repo_path, section.auto_push) if commit.committed else PushResult(False, "no changes")
+            for name in ("codex", "claude", "manifests"):
+                destination = sync_root / name
+                shutil.rmtree(destination, ignore_errors=True)
+                source = staged_root / name
+                if source.exists():
+                    shutil.copytree(source, destination)
+            repo_scan = scan_tree(sync_root)
+            if not repo_scan.ok:
+                return _failed_scan_result("extra backup", section.repo_path, repo_scan)
+
+            commit = commit_all_if_changed(sync_root, f"backup: extra memory {_timestamp()}")
+        finally:
+            if not use_current_worktree and sync_root.exists():
+                remove_worktree(section.repo_path, sync_root)
+
+    if commit.committed:
+        push = push_branch_if_configured(section.repo_path, section.main_branch, section.auto_push)
+    else:
+        push = PushResult(False, "no changes")
     return RepoSyncResult(
         name="extra backup",
         path=section.repo_path,

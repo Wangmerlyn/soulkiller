@@ -7,7 +7,8 @@ real private memory, transcripts, secrets, project notes, or backup snapshots.
 Soulkiller works with the memory stores where they already live:
 
 - `~/.codex/memories` is expected to already be a git repository. Soulkiller
-  commits and pushes that repository in place.
+  reads that repository as source state and writes Codex backup branches in the
+  private backup repository.
 - A separate private backup repository stores memory that should not live in
   the public tool repo, including Claude project memory and custom Codex skills.
 
@@ -23,13 +24,24 @@ Codex long-term memory stays in:
 ~/.codex/memories
 ```
 
-Soulkiller runs git status, commit, and push inside that repository. It does not
-copy this data into the Soulkiller source tree.
+Soulkiller does not create commits, branches, or tags inside that source
+repository. Instead, it stores Codex memory in the configured private backup
+repository:
+
+```text
+codex/source
+codex/snapshots
+```
+
+`codex/source` mirrors the Codex memories repository's committed source HEAD.
+`codex/snapshots` stores append-only snapshots of the Codex memories working
+tree. Snapshot commits are created only when the working-tree content changes,
+so scheduled runs do not create empty commits.
 
 ### Private Backup Repository
 
-Claude project memory and custom Codex skills are copied into a private backup
-repository with this layout:
+The private backup repository is a multi-branch repository. Its `main` branch
+stores Claude project memory and custom Codex skills with this layout:
 
 ```text
 codex/
@@ -80,9 +92,10 @@ Show configured paths and whether each backup target is enabled.
 ./bin/soulkiller sync
 ```
 
-Scan configured inputs, update the private backup repository, commit changes,
-and push configured remotes. Codex memory is committed and pushed in
-`~/.codex/memories`.
+Scan configured extra inputs, update the private backup repository, commit
+changes, and push configured remotes. Codex memories are copied into
+`codex/source` and `codex/snapshots` branches in the private backup repository;
+the live `~/.codex/memories` source repository is not mutated.
 
 ```sh
 ./bin/soulkiller install-timer
@@ -94,7 +107,19 @@ Install a systemd user timer for scheduled syncs.
 ./bin/soulkiller restore --dry-run
 ```
 
-Preview what would be restored without writing files.
+Preview what would be restored from the extra backup.
+
+```sh
+./bin/soulkiller restore --source codex --dry-run
+```
+
+Preview the latest Codex memory snapshot without writing files.
+
+```sh
+./bin/soulkiller restore --source codex --list-snapshots
+```
+
+List recent Codex snapshot commits.
 
 ```sh
 ./bin/soulkiller restore --staging-dir <path>
@@ -102,6 +127,13 @@ Preview what would be restored without writing files.
 
 Restore into a staging directory for manual inspection. Soulkiller should not
 overwrite live memory directly during a restore.
+
+```sh
+./bin/soulkiller restore --source codex --snapshot latest --staging-dir <path>
+```
+
+Restore the latest Codex memory snapshot into a staging directory. Use a commit
+or ref instead of `latest` to stage a specific snapshot.
 
 ## Scheduling
 
@@ -147,8 +179,8 @@ soulkiller-backup`.
 ## Safety Scan
 
 Soulkiller does not scan the Codex memories repository before syncing it. That
-repository is treated as Codex-owned state and is backed up with normal git
-commit/push behavior.
+repository is treated as Codex-owned private state and is copied into private
+backup branches.
 
 Soulkiller does scan the generated extra backup repository. That scanner is
 designed to stop common private or noisy data from entering the private backup
@@ -173,6 +205,7 @@ Always restore to a staging directory first:
 
 ```sh
 ./bin/soulkiller restore --staging-dir /tmp/soulkiller-restore
+./bin/soulkiller restore --source codex --snapshot latest --staging-dir /tmp/soulkiller-codex-restore
 ```
 
 Inspect the staged files, then manually copy back only the memory or skill data
