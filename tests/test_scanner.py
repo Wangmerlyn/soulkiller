@@ -42,6 +42,28 @@ def test_scan_tree_allows_environment_token_lookup_code(tmp_path):
     assert result.ok
 
 
+def test_scan_tree_does_not_cross_lines_when_checking_assignments(tmp_path):
+    file_path = tmp_path / "client.py"
+    file_path.write_text(
+        "if not self.access_token:\n"
+        '    raise ValueError("Environment variable TOKEN is not set")\n',
+        encoding="utf-8",
+    )
+
+    result = scan_tree(tmp_path)
+
+    assert result.ok
+
+
+def test_scan_tree_allows_ellipsis_placeholder_values(tmp_path):
+    file_path = tmp_path / "review.md"
+    file_path.write_text("The example had `api_key: ... llm_provider: openai`.\n", encoding="utf-8")
+
+    result = scan_tree(tmp_path)
+
+    assert result.ok
+
+
 def test_scan_tree_rejects_binary_file(tmp_path):
     file_path = tmp_path / "memory.bin"
     file_path.write_bytes(b"\x00\x01\x02")

@@ -29,7 +29,7 @@ DENIED_DIRS = {
     "telemetry",
 }
 SECRET_ASSIGNMENT = re.compile(
-    r"(?i)\b(?P<key>api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password)\b\s*[:=]\s*(?P<value>[^\n#]+)"
+    r"(?i)\b(?P<key>api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password)\b[ \t]*[:=][ \t]*(?P<value>[^\n#]+)"
 )
 WEBHOOK_PATTERNS = [
     re.compile(r"https://hooks\.slack\.com/services/[A-Za-z0-9/_-]+"),
@@ -76,6 +76,8 @@ def _secret_assignment_issue(text: str) -> str | None:
         key = match.group("key")
         value = match.group("value").strip().strip("'\"`,")
         upper_value = value.upper()
+        if "..." in value:
+            continue
         if "REDACTED" in upper_value:
             continue
         if "OS.ENVIRON" in upper_value or "GETENV" in upper_value:
