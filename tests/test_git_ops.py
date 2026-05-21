@@ -2,12 +2,14 @@ import subprocess
 
 import pytest
 
+import soulkiller.git_ops as git_ops
 from soulkiller.git_ops import (
     branch_exists,
     commit_all_if_changed,
     ensure_branch_worktree,
     ensure_git_repo,
     has_remote,
+    remove_worktree,
     push_branch_if_configured,
     push_if_configured,
     update_branch_to_ref,
@@ -116,6 +118,47 @@ def test_ensure_branch_worktree_rejects_unregistered_git_repo_on_branch(tmp_path
         ensure_branch_worktree(repo, "codex/snapshots", worktree_path)
 
     assert marker.read_text(encoding="utf-8") == "keep this\n"
+
+
+def test_ensure_branch_worktree_rejects_unregistered_bare_git_repo(tmp_path):
+    repo = tmp_path / "repo"
+    worktree_path = tmp_path / "snapshots.git"
+    ensure_git_repo(repo)
+    configure_identity(repo)
+    (repo / "MEMORY.md").write_text("source\n", encoding="utf-8")
+    commit_all_if_changed(repo, "backup: source")
+    subprocess.run(
+        ["git", "init", "--bare", str(worktree_path)],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    with pytest.raises(ValueError):
+        ensure_branch_worktree(repo, "codex/snapshots", worktree_path)
+
+    assert (worktree_path / "config").exists()
+
+
+def test_remove_worktree_raises_on_git_failure_even_when_path_missing(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    worktree_path = tmp_path / "missing"
+
+    def fake_run_git(actual_repo, *args, check=True):
+        assert actual_repo == repo
+        assert args == ("worktree", "remove", "--force", str(worktree_path))
+        assert check is False
+        return subprocess.CompletedProcess(
+            args=["git"],
+            returncode=128,
+            stdout="stdout detail",
+            stderr="stderr detail",
+        )
+
+    monkeypatch.setattr(git_ops, "run_git", fake_run_git)
+
+    with pytest.raises(RuntimeError, match="stderr detail"):
+        remove_worktree(repo, worktree_path)
 
 
 def test_push_if_configured_skips_without_remote(tmp_path):

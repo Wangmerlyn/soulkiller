@@ -33,6 +33,11 @@ def is_git_repo(path: Path) -> bool:
     return result.returncode == 0 and result.stdout.strip() == "true"
 
 
+def is_bare_git_repo(path: Path) -> bool:
+    result = run_git(path, "rev-parse", "--is-bare-repository", check=False)
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
 def ensure_git_repo(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
     if is_git_repo(path):
@@ -76,8 +81,9 @@ def ensure_branch_worktree(repo: Path, branch: str, worktree_path: Path) -> None
     if path_present(worktree_path):
         registered_branch = registered_worktree_branch(repo, worktree_path)
         path_is_git_repo = is_git_repo(worktree_path)
+        path_is_bare_git_repo = is_bare_git_repo(worktree_path)
 
-        if path_is_git_repo and registered_branch is None:
+        if (path_is_git_repo or path_is_bare_git_repo) and registered_branch is None:
             raise ValueError(f"{worktree_path} is a git repo but not a registered worktree of {repo}")
 
         if registered_branch == branch:
@@ -92,7 +98,7 @@ def ensure_branch_worktree(repo: Path, branch: str, worktree_path: Path) -> None
         else:
             remove_worktree(repo, worktree_path)
             if path_present(worktree_path):
-                raise ValueError(f"failed to remove registered worktree {worktree_path}")
+                raise RuntimeError(f"failed to remove registered worktree {worktree_path}")
 
     if branch_exists(repo, branch):
         run_git(repo, "worktree", "add", str(worktree_path), branch)
@@ -102,9 +108,9 @@ def ensure_branch_worktree(repo: Path, branch: str, worktree_path: Path) -> None
 
 def remove_worktree(repo: Path, worktree_path: Path) -> None:
     result = run_git(repo, "worktree", "remove", "--force", str(worktree_path), check=False)
-    if result.returncode != 0 and path_present(worktree_path):
-        reason = result.stderr.strip() or "unknown error"
-        raise ValueError(f"failed to remove registered worktree {worktree_path}: {reason}")
+    if result.returncode != 0:
+        reason = format_git_error(result)
+        raise RuntimeError(f"failed to remove registered worktree {worktree_path}: {reason}")
 
 
 def remove_path_if_present(path: Path) -> None:
@@ -118,6 +124,11 @@ def remove_path_if_present(path: Path) -> None:
 
 def path_present(path: Path) -> bool:
     return path.exists() or path.is_symlink()
+
+
+def format_git_error(result: subprocess.CompletedProcess[str]) -> str:
+    details = [detail for detail in (result.stderr.strip(), result.stdout.strip()) if detail]
+    return "\n".join(details) if details else "unknown error"
 
 
 def registered_worktree_branch(repo: Path, worktree_path: Path) -> str | None:
