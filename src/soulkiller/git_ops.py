@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import shutil
 import subprocess
 
 
@@ -78,6 +79,7 @@ def ensure_branch_worktree(repo: Path, branch: str, worktree_path: Path) -> None
             run_git(worktree_path, "clean", "-fd")
             return
         remove_worktree(repo, worktree_path)
+        remove_path_if_present(worktree_path)
 
     if branch_exists(repo, branch):
         run_git(repo, "worktree", "add", str(worktree_path), branch)
@@ -87,6 +89,15 @@ def ensure_branch_worktree(repo: Path, branch: str, worktree_path: Path) -> None
 
 def remove_worktree(repo: Path, worktree_path: Path) -> None:
     run_git(repo, "worktree", "remove", "--force", str(worktree_path), check=False)
+
+
+def remove_path_if_present(path: Path) -> None:
+    if not path.exists() and not path.is_symlink():
+        return
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
 
 
 def has_remote(repo: Path) -> bool:

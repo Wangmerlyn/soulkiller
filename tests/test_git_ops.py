@@ -78,6 +78,23 @@ def test_ensure_branch_worktree_creates_or_reuses_branch(tmp_path):
     assert (worktree_path / "snapshot.txt").read_text(encoding="utf-8") == "snapshot\n"
 
 
+def test_ensure_branch_worktree_replaces_plain_directory(tmp_path):
+    repo = tmp_path / "repo"
+    worktree_path = tmp_path / "snapshots"
+    ensure_git_repo(repo)
+    configure_identity(repo)
+    (repo / "MEMORY.md").write_text("source\n", encoding="utf-8")
+    commit_all_if_changed(repo, "backup: source")
+    worktree_path.mkdir()
+    stale_file = worktree_path / "stale.txt"
+    stale_file.write_text("old plain directory\n", encoding="utf-8")
+
+    ensure_branch_worktree(repo, "codex/snapshots", worktree_path)
+
+    assert run_git(worktree_path, "branch", "--show-current").stdout.strip() == "codex/snapshots"
+    assert stale_file.exists() is False
+
+
 def test_push_if_configured_skips_without_remote(tmp_path):
     ensure_git_repo(tmp_path)
 
