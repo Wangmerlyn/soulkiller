@@ -6,6 +6,7 @@ import sys
 
 from .config import default_config_path, load_config, write_default_config
 from .restore import restore_dry_run, restore_to_staging
+from .scheduler import install_cron, install_tmux_loop
 from .sync import RepoSyncResult, sync_all
 from .timer import install_timer
 
@@ -69,6 +70,19 @@ def command_install_timer(args: argparse.Namespace) -> int:
     return 0 if result.enabled or not args.enable else 1
 
 
+def command_install_cron(args: argparse.Namespace) -> int:
+    result = install_cron(_config_path(args))
+    print(result.message)
+    return 0 if result.installed else 1
+
+
+def command_install_tmux_loop(args: argparse.Namespace) -> int:
+    result = install_tmux_loop(_config_path(args), session_name=args.session_name)
+    print(f"session: {result.session_name}")
+    print(result.message)
+    return 0 if result.started else 1
+
+
 def command_restore(args: argparse.Namespace) -> int:
     config = load_config(_config_path(args))
     if args.dry_run:
@@ -107,6 +121,15 @@ def build_parser() -> argparse.ArgumentParser:
     timer_parser.add_argument("--enable", action="store_true")
     timer_parser.set_defaults(func=command_install_timer)
 
+    cron_parser = subparsers.add_parser("install-cron")
+    cron_parser.add_argument("--config", help="Path to config.toml")
+    cron_parser.set_defaults(func=command_install_cron)
+
+    tmux_parser = subparsers.add_parser("install-tmux-loop")
+    tmux_parser.add_argument("--config", help="Path to config.toml")
+    tmux_parser.add_argument("--session-name", default="soulkiller-backup")
+    tmux_parser.set_defaults(func=command_install_tmux_loop)
+
     restore_parser = subparsers.add_parser("restore")
     restore_parser.add_argument("--config", help="Path to config.toml")
     restore_parser.add_argument("--dry-run", action="store_true")
@@ -119,4 +142,3 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)
-
