@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,8 @@ name = "soulkiller"
 version = "0.1.0"
 description = "Back up long-term Codex and Claude coding-agent memory."
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
 
 [project.scripts]
 soulkiller = "soulkiller.cli:main"
@@ -14,4 +16,3 @@ soulkiller = "soulkiller.cli:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-
