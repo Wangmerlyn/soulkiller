@@ -216,3 +216,7 @@ Claude state.
 
 Keep this repository public-safe. Real memory belongs in `~/.codex/memories` or
 the configured private backup repository, never in the Soulkiller source repo.
+
+## License
+
+Soulkiller is released under the MIT License. See [LICENSE](LICENSE).
